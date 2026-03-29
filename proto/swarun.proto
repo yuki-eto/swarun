@@ -1,0 +1,314 @@
+syntax = "proto3";
+
+package swarun.v1;
+
+option go_package = "github.com/yuki-eto/swarun/proto/v1;swarunv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// ControllerService はワーカーからコントローラーへの通信を定義します。
+service ControllerService {
+  // RegisterWorker はワーカーが起動時にコントローラーに自身を登録するために呼び出します。
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+
+  // SendMetrics はワーカーが計測したメトリクスをリアルタイムにコントローラーへ送信します。
+  // ストリーミングを使用して効率的に送信します。
+  rpc SendMetrics(stream MetricBatch) returns (SendMetricsResponse);
+
+  // Heartbeat はワーカーの生存確認のために定期的に呼び出されます。
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // ExportToS3 はコントローラーに保存されたデータを S3 にアップロードするように指示します。
+  rpc ExportToS3(ExportToS3Request) returns (ExportToS3Response);
+
+  // ImportFromS3 は S3 に保存された時系列データをローカルにダウンロードし、ストレージを初期化するように指示します。
+  rpc ImportFromS3(ImportFromS3Request) returns (ImportFromS3Response);
+
+  // RunTest はコントローラーに対して、全ワーカーまたは特定のワーカーに負荷試験の開始を指示するように命令します。
+  rpc RunTest(RunTestRequest) returns (RunTestResponse);
+
+  // GetTestStatus は指定されたテスト実行の進捗状況を取得します。
+  rpc GetTestStatus(GetTestStatusRequest) returns (GetTestStatusResponse);
+
+  // ListWorkers は現在登録されているワーカーの一覧を取得します。
+  rpc ListWorkers(ListWorkersRequest) returns (ListWorkersResponse);
+
+  // GetMetrics は指定されたテスト実行のメトリクスを取得します。
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+
+  // ProvisionWorkers は指定されたモード（Local, Docker, ECS など）でワーカーノードを起動します。
+  rpc ProvisionWorkers(ProvisionWorkersRequest) returns (ProvisionWorkersResponse);
+
+  // TeardownWorkers は起動した全ワーカーノードを停止・削除します。
+  rpc TeardownWorkers(TeardownWorkersRequest) returns (TeardownWorkersResponse);
+
+  // StopTest は実行中のテストを停止します（全ワーカーに停止を通知）。
+  rpc StopTest(StopTestRequest) returns (StopTestResponse);
+
+  // ListTestRuns は過去のテスト実行ID一覧を取得します。
+  rpc ListTestRuns(ListTestRunsRequest) returns (ListTestRunsResponse);
+
+  // ExportReport は指定されたテスト実行のレポートを HTML 形式で取得します。
+  rpc ExportReport(ExportReportRequest) returns (ExportReportResponse);
+
+  // ExportData は data_dir の内容を zip で固めてストリームで送信します。
+  rpc ExportData(ExportDataRequest) returns (stream ExportDataResponse);
+
+  // ImportData は受信した zip データを data_dir に展開します。
+  rpc ImportData(stream ImportDataRequest) returns (ImportDataResponse);
+}
+
+// WorkerService はコントローラーからワーカーへの通信を定義します。
+service WorkerService {
+  // StartTest はコントローラーがワーカーに対して負荷試験の開始を指示します。
+  rpc StartTest(StartTestRequest) returns (StartTestResponse);
+
+  // StopTest は実行中の負荷試験の停止を指示します。
+  rpc StopTest(StopTestRequest) returns (StopTestResponse);
+}
+
+// メッセージ定義
+
+message TeardownWorkersRequest {}
+
+message TeardownWorkersResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListTestRunsRequest {}
+
+message ListTestRunsResponse {
+  repeated string test_run_ids = 1;
+}
+
+message ExportReportRequest {
+  string test_run_id = 1;
+}
+
+message ExportReportResponse {
+  string html = 1;
+}
+
+message ListWorkersRequest {}
+
+message ListWorkersResponse {
+  repeated WorkerInfo workers = 1;
+}
+
+message WorkerInfo {
+  string worker_id = 1;
+  string hostname = 2;
+  string address = 3;
+  google.protobuf.Timestamp last_heartbeat = 4;
+}
+
+message ProvisionWorkersRequest {
+  oneof mode {
+    LocalMode local = 1;
+    DockerMode docker = 2;
+    ECSMode ecs = 3;
+  }
+  int32 count = 4; // 起動するワーカー数
+  string controller_address = 5; // ワーカーがコントローラーに接続するためのアドレス
+}
+
+message LocalMode {
+  // バイナリパスは不要になったため削除（または必要なら他の用途に使用）
+}
+
+message DockerMode {
+  string image = 1; // 使用する Docker イメージ名
+}
+
+message ECSMode {
+  string cluster = 1;
+  string task_definition = 2;
+  string region = 3;
+  string subnets = 4; // カンマ区切り
+  string security_groups = 5; // カンマ区切り
+}
+
+message ProvisionWorkersResponse {
+  bool success = 1;
+  string message = 2;
+  repeated string worker_ids = 3;
+}
+
+message RunTestRequest {
+  StartTestRequest test_config = 1;
+  repeated string worker_ids = 2; // 空の場合は全ワーカーを対象とする
+}
+
+message RunTestResponse {
+  bool success = 1;
+  string message = 2;
+  repeated string started_workers = 3;
+  string test_run_id = 4;
+}
+
+message GetTestStatusRequest {
+  string test_run_id = 1;
+}
+
+message GetTestStatusResponse {
+  string test_run_id = 1;
+  bool is_running = 2;
+  int64 total_success = 3;
+  int64 total_failure = 4;
+  double avg_latency_ms = 5;
+  int32 worker_count = 6;
+  google.protobuf.Timestamp start_time = 7;
+  double max_latency_ms = 8;
+  double min_latency_ms = 9;
+  double p90_latency_ms = 10;
+  double p95_latency_ms = 11;
+  double rps = 12;
+  google.protobuf.Timestamp end_time = 13;
+  map<string, PathMetrics> path_metrics = 14;
+  google.protobuf.Duration duration = 15;
+  int32 concurrency = 16;
+  int64 total_iterations = 17;
+}
+
+message PathMetrics {
+  int64 total_success = 1;
+  int64 total_failure = 2;
+  double avg_latency_ms = 3;
+  double max_latency_ms = 4;
+  double min_latency_ms = 5;
+  double p90_latency_ms = 6;
+  double p95_latency_ms = 7;
+  double rps = 8;
+}
+
+message GetMetricsRequest {
+  string test_run_id = 1;
+  string metric_name = 2;
+  map<string, string> labels = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+  string aggregate_func = 6; // "mean", "sum", "max", "min", "count" など。空の場合は集計なし。
+  google.protobuf.Duration aggregate_window = 7; // 集計のウィンドウ幅。例: "10s", "1m"
+}
+
+message GetMetricsResponse {
+  repeated MetricData points = 1;
+}
+
+message MetricData {
+  google.protobuf.Timestamp timestamp = 1;
+  double value = 2;
+  map<string, string> labels = 3;
+}
+
+message ImportFromS3Request {
+  string s3_bucket = 1;
+  string s3_prefix = 2;
+  string s3_region = 3;
+  string test_run_id = 4; // 特定のテスト実行IDのみをインポートする場合に指定
+}
+
+message ImportFromS3Response {
+  bool success = 1;
+  string message = 2;
+}
+
+message ExportToS3Request {
+  string s3_bucket = 1;
+  string s3_prefix = 2;
+  string s3_region = 3;
+  string test_run_id = 4; // 特定のテスト実行IDのみをエクスポートする場合に指定
+}
+
+message ExportToS3Response {
+  bool success = 1;
+  string message = 2;
+}
+
+message RegisterWorkerRequest {
+  string worker_id = 1;
+  string hostname = 2;
+  string address = 3; // ワーカーの gRPC サーバーアドレス (例: "http://10.0.0.1:8080")
+}
+
+message RegisterWorkerResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+}
+
+message MetricBatch {
+  string worker_id = 1;
+  string test_run_id = 2;
+  repeated MetricEntry metrics = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+message MetricEntry {
+  string name = 1; // "rps", "success_count", "failure_count", "latency_ms" など
+  double value = 2;
+  map<string, string> labels = 3; // カスタマイズ可能なメトリクス用のラベル
+}
+
+message SendMetricsResponse {
+  bool accepted = 1;
+}
+
+message StartTestRequest {
+  string test_run_id = 1;
+  // ワーカー内で同時に実行するプロセス（並列数）
+  int32 concurrency = 2;
+  // テスト実行時間（指定された時間分実行を継続する）
+  google.protobuf.Duration duration = 3;
+  // 総実行回数（指定された回数に達したら終了する）
+  int64 total_requests = 4;
+  // 最大実行時間（回数指定の場合でもこの時間を超えたら強制終了する）
+  google.protobuf.Duration max_duration = 5;
+  // 指定された並列数（concurrency）に達するまでの時間（単純なランプアップ期間）
+  // stages が指定されている場合はそちらが優先される
+  google.protobuf.Duration ramp_up_duration = 6;
+  // 段階的な並列数（concurrency）の調整スケジュール
+  repeated RampingStage stages = 7;
+}
+
+message RampingStage {
+  int32 target = 1; // 到達目標の並列数
+  google.protobuf.Duration duration = 2; // この並列数に達するまでの、または維持する期間
+}
+
+message StartTestResponse {
+  bool started = 1;
+  string message = 2;
+}
+
+message StopTestRequest {
+  string test_run_id = 1;
+}
+
+message StopTestResponse {
+  bool stopped = 1;
+}
+
+message ExportDataRequest {}
+
+message ExportDataResponse {
+  bytes chunk = 1;
+}
+
+message ImportDataRequest {
+  bytes chunk = 1;
+}
+
+message ImportDataResponse {
+  bool success = 1;
+  string message = 2;
+}
