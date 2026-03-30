@@ -15,17 +15,32 @@ build-web: gen-web-proto
 
 build-go:
 	mkdir -p tmp
-	go build -o tmp/swarun ./cmd/swarun/main.go
-	go build -o tmp/swarun-example ./examples/simple-get/main.go
+	CGO_ENABLED=1 go build -o tmp/swarun ./cmd/swarun/main.go
+	CGO_ENABLED=1 go build -o tmp/swarun-example ./examples/simple-get/main.go
+
+docker-compose-up:
+	docker compose up -d
+
+docker-compose-down:
+	docker compose down
 
 docker-build:
 	docker build -t swarun:latest .
 
-docker-up:
-	docker compose up -d
+docker-create-network:
+	docker network inspect swarun_default >/dev/null 2>&1 || \
+	docker network create swarun_default
 
-docker-down:
-	docker compose down
+docker-run: docker-build docker-create-network
+	docker run --rm -it \
+		--name controller \
+		--network swarun_default \
+		-p 8080:8080 \
+		-v $(pwd)/data:/app/data \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-e SWARUN_DATA_DIR=/app/data \
+		-e SWARUN_PLATFORM=docker \
+		swarun:latest -mode controller
 
 clean:
 	rm -rf tmp/
