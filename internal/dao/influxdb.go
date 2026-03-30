@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -83,6 +84,12 @@ func (d *influxDBDAO) InsertRows(ctx context.Context, rows []Row) error {
 		if d.testRunID != "" {
 			labels["test_run_id"] = d.testRunID
 		}
+		if r.WorkerID != "" {
+			labels["worker_id"] = r.WorkerID
+		}
+		if r.Path != "" {
+			labels["path"] = r.Path
+		}
 
 		p := influxdb2.NewPoint(
 			r.Metric,
@@ -150,12 +157,22 @@ func (d *influxDBDAO) SelectRows(ctx context.Context, metric string, labels map[
 			}
 		}
 
-		rows = append(rows, Row{
+		row := Row{
 			Metric:    metric,
-			Labels:    labels, // 元のラベルを使用（レコードのラベルをマージすることも可能だが一旦これで）
 			Timestamp: r.Time(),
 			Value:     val,
-		})
+			WorkerID:  fmt.Sprintf("%v", r.ValueByKey("worker_id")),
+			Path:      fmt.Sprintf("%v", r.ValueByKey("path")),
+			Labels:    make(map[string]string),
+		}
+
+		// その他のラベルを詰め直す
+		for k, v := range r.Values() {
+			if k != "worker_id" && k != "path" && !strings.HasPrefix(k, "_") && k != "test_run_id" {
+				row.Labels[k] = fmt.Sprintf("%v", v)
+			}
+		}
+		rows = append(rows, row)
 	}
 
 	if result.Err() != nil {
@@ -168,6 +185,30 @@ func (d *influxDBDAO) SelectRows(ctx context.Context, metric string, labels map[
 func (d *influxDBDAO) SelectStats(ctx context.Context, labels map[string]string, start, end time.Time) (map[string]float64, map[string]map[string]float64, error) {
 	// InfluxDB では未実装（とりあえず空で返す）
 	return make(map[string]float64), make(map[string]map[string]float64), nil
+}
+
+func (d *influxDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]any, error) {
+	result, err := d.queryAPI.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query InfluxDB: %w", err)
+	}
+	defer result.Close()
+
+	var rows []map[string]any
+	for result.Next() {
+		r := result.Record()
+		m := make(map[string]any)
+		for k, v := range r.Values() {
+			m[k] = v
+		}
+		rows = append(rows, m)
+	}
+
+	if result.Err() != nil {
+		return nil, fmt.Errorf("error during InfluxDB query result iteration: %w", result.Err())
+	}
+
+	return rows, nil
 }
 
 func (d *influxDBDAO) Close() error {

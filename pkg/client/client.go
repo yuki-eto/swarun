@@ -118,3 +118,15 @@ func (c *Client) ExportData(ctx context.Context) (*connect.ServerStreamForClient
 func (c *Client) ImportData(ctx context.Context) *connect.ClientStreamForClient[swarunv1.ImportDataRequest, swarunv1.ImportDataResponse] {
 	return c.inner.ImportData(ctx)
 }
+
+// QueryMetrics は指定された test_run_id の DuckDB に対してクエリを発行します。
+func (c *Client) QueryMetrics(ctx context.Context, testRunID, query string) ([]*swarunv1.QueryResultRow, error) {
+	resp, err := c.inner.QueryMetrics(ctx, connect.NewRequest(&swarunv1.QueryMetricsRequest{
+		TestRunId: testRunID,
+		Query:     query,
+	}))
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg.GetRows(), nil
+}

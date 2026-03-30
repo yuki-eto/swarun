@@ -39,6 +39,8 @@ func main() {
 		startTime       string
 		endTime         string
 		workerID        string
+		query           string
+		queryFormat     string
 	)
 	flag.IntVar(&concurrency, "concurrency", 10, "Concurrency")
 	flag.IntVar(&workerCount, "worker-count", 1, "Number of workers")
@@ -49,7 +51,7 @@ func main() {
 	flag.Int64Var(&duration, "duration", 10, "Test duration sec")
 	flag.Int64Var(&runCount, "run-count", 0, "Number of runs")
 	flag.StringVar(&controllerAddr, "controller", "http://localhost:8080", "Controller address")
-	flag.StringVar(&command, "cmd", "list-workers", "Client command: run-test, get-status, watch-status, get-metrics, list-workers, provision-workers, teardown-workers, teardown-worker, export-s3, import-s3, export-data, import-data")
+	flag.StringVar(&command, "cmd", "list-workers", "Client command: run-test, get-status, watch-status, get-metrics, list-workers, provision-workers, teardown-workers, teardown-worker, export-s3, import-s3, export-data, import-data, metrics-query")
 	flag.DurationVar(&maxDuration, "max-duration", 0, "Max test duration (default: duration * 2)")
 	flag.DurationVar(&rampUp, "ramp-up", 0, "Ramp up duration (e.g., 10s, 1m)")
 	flag.StringVar(&stages, "stages", "", "Ramp up stages (e.g., \"10:10s,20:30s\")")
@@ -65,6 +67,8 @@ func main() {
 	flag.StringVar(&startTime, "start-time", "", "Start time for get-metrics (RFC3339)")
 	flag.StringVar(&endTime, "end-time", "", "End time for get-metrics (RFC3339)")
 	flag.StringVar(&workerID, "worker-id", "", "Worker ID for teardown-worker")
+	flag.StringVar(&query, "query", "", "SQL query for DuckDB")
+	flag.StringVar(&queryFormat, "query-format", "text", "Output format (json, csv, text)")
 	flag.Parse()
 
 	cfg, err := config.Load(nil)
@@ -96,6 +100,8 @@ func main() {
 		ECSSG:           ecsSG,
 		Labels:          make(map[string]string),
 		WorkerID:        workerID,
+		Query:           query,
+		QueryFormat:     queryFormat,
 	}
 
 	if labels != "" {

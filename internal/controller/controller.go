@@ -27,6 +27,7 @@ import (
 	"github.com/yuki-eto/swarun/pkg/config"
 	"github.com/yuki-eto/swarun/pkg/logging"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -1192,4 +1193,54 @@ func (c *Controller) ImportData(
 		Success: true,
 		Message: "Data imported successfully and test run history reloaded.",
 	}), nil
+}
+
+func (c *Controller) QueryMetrics(ctx context.Context, req *connect.Request[swarunv1.QueryMetricsRequest]) (*connect.Response[swarunv1.QueryMetricsResponse], error) {
+	testRunID := req.Msg.GetTestRunId()
+	query := req.Msg.GetQuery()
+
+	// 1. 新しいコネクション（DAO）を個別に作成する
+	// c.getStorage を使うと internal キャッシュに保持されてしまうため、直接作成する
+	var storage dao.MetricsDAO
+	var err error
+
+	switch c.cfg.MetricsBackend {
+	case "influxdb":
+		storage, err = dao.NewInfluxDBDAO(
+			ctx,
+			c.cfg.InfluxDBURL,
+			c.cfg.InfluxDBToken,
+			c.cfg.InfluxDBOrg,
+			c.cfg.InfluxDBBucket,
+			testRunID,
+		)
+	default:
+		storage, err = dao.NewDuckDBDAO(c.dataDir, testRunID)
+	}
+
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to open storage for %s: %w", testRunID, err))
+	}
+	// 2. 実行後に必ず閉じる
+	defer storage.Close()
+
+	// 3. クエリ実行
+	rawRows, err := storage.QueryRaw(ctx, query)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query failed: %w", err))
+	}
+
+	var respRows []*swarunv1.QueryResultRow
+	for _, row := range rawRows {
+		s, err := structpb.NewStruct(row)
+		if err != nil {
+			// structpb.NewStruct は、値がサポートされていない場合（例: func, chan）にエラーを返します。
+			// map[string]any の中身をログに出力するなどしてデバッグを容易にします。
+			c.logger.Error("Failed to convert row to structpb.Struct", "error", err, "row", row)
+			continue
+		}
+		respRows = append(respRows, &swarunv1.QueryResultRow{Columns: s})
+	}
+
+	return connect.NewResponse(&swarunv1.QueryMetricsResponse{Rows: respRows}), nil
 }

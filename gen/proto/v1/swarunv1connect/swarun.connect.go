@@ -86,6 +86,9 @@ const (
 	// ControllerServiceImportDataProcedure is the fully-qualified name of the ControllerService's
 	// ImportData RPC.
 	ControllerServiceImportDataProcedure = "/swarun.v1.ControllerService/ImportData"
+	// ControllerServiceQueryMetricsProcedure is the fully-qualified name of the ControllerService's
+	// QueryMetrics RPC.
+	ControllerServiceQueryMetricsProcedure = "/swarun.v1.ControllerService/QueryMetrics"
 	// WorkerServiceStartTestProcedure is the fully-qualified name of the WorkerService's StartTest RPC.
 	WorkerServiceStartTestProcedure = "/swarun.v1.WorkerService/StartTest"
 	// WorkerServiceStopTestProcedure is the fully-qualified name of the WorkerService's StopTest RPC.
@@ -129,6 +132,8 @@ type ControllerServiceClient interface {
 	ExportData(context.Context, *connect.Request[v1.ExportDataRequest]) (*connect.ServerStreamForClient[v1.ExportDataResponse], error)
 	// ImportData は受信した zip データを data_dir に展開します。
 	ImportData(context.Context) *connect.ClientStreamForClient[v1.ImportDataRequest, v1.ImportDataResponse]
+	// QueryMetrics は指定された test_run_id の DuckDB に対してクエリを発行します。
+	QueryMetrics(context.Context, *connect.Request[v1.QueryMetricsRequest]) (*connect.Response[v1.QueryMetricsResponse], error)
 }
 
 // NewControllerServiceClient constructs a client for the swarun.v1.ControllerService service. By
@@ -244,6 +249,12 @@ func NewControllerServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(controllerServiceMethods.ByName("ImportData")),
 			connect.WithClientOptions(opts...),
 		),
+		queryMetrics: connect.NewClient[v1.QueryMetricsRequest, v1.QueryMetricsResponse](
+			httpClient,
+			baseURL+ControllerServiceQueryMetricsProcedure,
+			connect.WithSchema(controllerServiceMethods.ByName("QueryMetrics")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -266,6 +277,7 @@ type controllerServiceClient struct {
 	exportReport     *connect.Client[v1.ExportReportRequest, v1.ExportReportResponse]
 	exportData       *connect.Client[v1.ExportDataRequest, v1.ExportDataResponse]
 	importData       *connect.Client[v1.ImportDataRequest, v1.ImportDataResponse]
+	queryMetrics     *connect.Client[v1.QueryMetricsRequest, v1.QueryMetricsResponse]
 }
 
 // RegisterWorker calls swarun.v1.ControllerService.RegisterWorker.
@@ -353,6 +365,11 @@ func (c *controllerServiceClient) ImportData(ctx context.Context) *connect.Clien
 	return c.importData.CallClientStream(ctx)
 }
 
+// QueryMetrics calls swarun.v1.ControllerService.QueryMetrics.
+func (c *controllerServiceClient) QueryMetrics(ctx context.Context, req *connect.Request[v1.QueryMetricsRequest]) (*connect.Response[v1.QueryMetricsResponse], error) {
+	return c.queryMetrics.CallUnary(ctx, req)
+}
+
 // ControllerServiceHandler is an implementation of the swarun.v1.ControllerService service.
 type ControllerServiceHandler interface {
 	// RegisterWorker はワーカーが起動時にコントローラーに自身を登録するために呼び出します。
@@ -390,6 +407,8 @@ type ControllerServiceHandler interface {
 	ExportData(context.Context, *connect.Request[v1.ExportDataRequest], *connect.ServerStream[v1.ExportDataResponse]) error
 	// ImportData は受信した zip データを data_dir に展開します。
 	ImportData(context.Context, *connect.ClientStream[v1.ImportDataRequest]) (*connect.Response[v1.ImportDataResponse], error)
+	// QueryMetrics は指定された test_run_id の DuckDB に対してクエリを発行します。
+	QueryMetrics(context.Context, *connect.Request[v1.QueryMetricsRequest]) (*connect.Response[v1.QueryMetricsResponse], error)
 }
 
 // NewControllerServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -501,6 +520,12 @@ func NewControllerServiceHandler(svc ControllerServiceHandler, opts ...connect.H
 		connect.WithSchema(controllerServiceMethods.ByName("ImportData")),
 		connect.WithHandlerOptions(opts...),
 	)
+	controllerServiceQueryMetricsHandler := connect.NewUnaryHandler(
+		ControllerServiceQueryMetricsProcedure,
+		svc.QueryMetrics,
+		connect.WithSchema(controllerServiceMethods.ByName("QueryMetrics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/swarun.v1.ControllerService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ControllerServiceRegisterWorkerProcedure:
@@ -537,6 +562,8 @@ func NewControllerServiceHandler(svc ControllerServiceHandler, opts ...connect.H
 			controllerServiceExportDataHandler.ServeHTTP(w, r)
 		case ControllerServiceImportDataProcedure:
 			controllerServiceImportDataHandler.ServeHTTP(w, r)
+		case ControllerServiceQueryMetricsProcedure:
+			controllerServiceQueryMetricsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -612,6 +639,10 @@ func (UnimplementedControllerServiceHandler) ExportData(context.Context, *connec
 
 func (UnimplementedControllerServiceHandler) ImportData(context.Context, *connect.ClientStream[v1.ImportDataRequest]) (*connect.Response[v1.ImportDataResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("swarun.v1.ControllerService.ImportData is not implemented"))
+}
+
+func (UnimplementedControllerServiceHandler) QueryMetrics(context.Context, *connect.Request[v1.QueryMetricsRequest]) (*connect.Response[v1.QueryMetricsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("swarun.v1.ControllerService.QueryMetrics is not implemented"))
 }
 
 // WorkerServiceClient is a client for the swarun.v1.WorkerService service.

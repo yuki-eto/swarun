@@ -2,10 +2,12 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +47,8 @@ type ClientArgs struct {
 	StartTime       time.Time
 	EndTime         time.Time
 	WorkerID        string
+	Query           string
+	QueryFormat     string
 }
 
 // Run はクライアントモードを実行します。
@@ -388,8 +392,136 @@ func Run(args ClientArgs, logger *slog.Logger) {
 		}
 		logger.Info("ImportData response", "success", resp.Msg.GetSuccess(), "message", resp.Msg.GetMessage())
 
+	case "metrics-query":
+		testRunID := args.TestID
+		if testRunID == "" {
+			logger.Error("-test-id is required for metrics-query")
+			os.Exit(1)
+		}
+		if args.Query == "" {
+			logger.Error("-query is required for metrics-query")
+			os.Exit(1)
+		}
+
+		rows, err := c.QueryMetrics(ctx, testRunID, args.Query)
+		if err != nil {
+			logger.Error("Failed to query metrics", logging.ErrorAttr(err))
+			os.Exit(1)
+		}
+
+		renderQueryResult(rows, args.QueryFormat)
+
 	default:
 		logger.Error("Unknown command", "cmd", args.Command)
 		os.Exit(1)
 	}
+}
+
+func renderQueryResult(rows []*swarunv1.QueryResultRow, format string) {
+	if len(rows) == 0 {
+		fmt.Println("No results found.")
+		return
+	}
+
+	switch format {
+	case "json":
+		data := make([]map[string]any, 0, len(rows))
+		for _, row := range rows {
+			data = append(data, row.GetColumns().AsMap())
+		}
+		b, _ := json.MarshalIndent(data, "", "  ")
+		fmt.Println(string(b))
+
+	case "csv":
+		// Get headers from first row
+		cols := rows[0].GetColumns().AsMap()
+		headers := sortedKeysFromMap(cols)
+		fmt.Println(strings.Join(headers, ","))
+		for _, row := range rows {
+			m := row.GetColumns().AsMap()
+			values := make([]string, 0, len(headers))
+			for _, h := range headers {
+				val := m[h]
+				if val == nil {
+					values = append(values, "")
+				} else if s, ok := val.(string); ok {
+					values = append(values, s)
+				} else {
+					// 構造体やリストなどは JSON 文字列にして CSV に入れる
+					b, _ := json.Marshal(val)
+					values = append(values, string(b))
+				}
+			}
+			fmt.Println(strings.Join(values, ","))
+		}
+
+	default: // "text" or anything else
+		// Calculate max widths for each column
+		firstRowCols := rows[0].GetColumns().AsMap()
+		headers := sortedKeysFromMap(firstRowCols)
+		widths := make(map[string]int)
+		for _, h := range headers {
+			widths[h] = len(h)
+		}
+
+		// 全ての行を文字列化して幅を計算
+		type rowData struct {
+			values map[string]string
+		}
+		displayRows := make([]rowData, 0, len(rows))
+
+		for _, row := range rows {
+			m := row.GetColumns().AsMap()
+			rd := rowData{values: make(map[string]string)}
+			for h, val := range m {
+				var s string
+				if val == nil {
+					s = ""
+				} else if str, ok := val.(string); ok {
+					s = str
+				} else {
+					b, _ := json.Marshal(val)
+					s = string(b)
+				}
+				rd.values[h] = s
+				if len(s) > widths[h] {
+					widths[h] = len(s)
+				}
+			}
+			displayRows = append(displayRows, rd)
+		}
+
+		// Render header
+		for i, h := range headers {
+			fmt.Printf("%-*s", widths[h]+2, h)
+			if i == len(headers)-1 {
+				fmt.Println()
+			}
+		}
+		// Render separator
+		for i, h := range headers {
+			fmt.Print(strings.Repeat("-", widths[h]) + "  ")
+			if i == len(headers)-1 {
+				fmt.Println()
+			}
+		}
+		// Render rows
+		for _, rd := range displayRows {
+			for i, h := range headers {
+				fmt.Printf("%-*s", widths[h]+2, rd.values[h])
+				if i == len(headers)-1 {
+					fmt.Println()
+				}
+			}
+		}
+	}
+}
+
+func sortedKeysFromMap(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
 }

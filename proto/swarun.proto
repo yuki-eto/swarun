@@ -6,6 +6,7 @@ option go_package = "github.com/yuki-eto/swarun/proto/v1;swarunv1";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/struct.proto";
 
 // ControllerService はワーカーからコントローラーへの通信を定義します。
 service ControllerService {
@@ -60,6 +61,9 @@ service ControllerService {
 
   // ImportData は受信した zip データを data_dir に展開します。
   rpc ImportData(stream ImportDataRequest) returns (ImportDataResponse);
+
+  // QueryMetrics は指定された test_run_id の DuckDB に対してクエリを発行します。
+  rpc QueryMetrics(QueryMetricsRequest) returns (QueryMetricsResponse);
 }
 
 // WorkerService はコントローラーからワーカーへの通信を定義します。
@@ -332,4 +336,17 @@ message ImportDataRequest {
 message ImportDataResponse {
   bool success = 1;
   string message = 2;
+}
+
+message QueryMetricsRequest {
+  string test_run_id = 1;
+  string query = 2;
+}
+
+message QueryMetricsResponse {
+  repeated QueryResultRow rows = 1;
+}
+
+message QueryResultRow {
+  google.protobuf.Struct columns = 1;
 }

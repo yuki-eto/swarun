@@ -83,14 +83,11 @@ func (d *duckDBDAO) InsertRows(ctx context.Context, rows []Row) error {
 	defer stmt.Close()
 
 	for _, r := range rows {
-		path := r.Labels["path"]
-		workerID := r.Labels["worker_id"]
-
 		labelsJSON, err := json.Marshal(r.Labels)
 		if err != nil {
 			return err
 		}
-		if _, err := stmt.ExecContext(ctx, r.Timestamp, r.Metric, r.Value, path, workerID, string(labelsJSON)); err != nil {
+		if _, err := stmt.ExecContext(ctx, r.Timestamp, r.Metric, r.Value, r.Path, r.WorkerID, string(labelsJSON)); err != nil {
 			return err
 		}
 	}
@@ -327,6 +324,71 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	}
 
 	return overallStats, pathMetrics, nil
+}
+
+func (d *duckDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]any, error) {
+	rows, err := d.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []map[string]any
+	for rows.Next() {
+		columns := make([]any, len(cols))
+		columnPointers := make([]any, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			return nil, err
+		}
+
+		m := make(map[string]any)
+		for i, colName := range cols {
+			val := columns[i]
+			if val == nil {
+				m[colName] = nil
+			} else {
+				// DuckDB から返される型に応じて適切に変換する
+				switch v := val.(type) {
+				case time.Time:
+					m[colName] = v.Format(time.RFC3339)
+				case []byte:
+					// JSON かもしれないのでパースを試みる
+					var jsonObj any
+					if err := json.Unmarshal(v, &jsonObj); err == nil {
+						m[colName] = jsonObj
+					} else {
+						m[colName] = string(v)
+					}
+				case string:
+					// 文字列の場合も JSON かもしれないのでパースを試みる
+					if (strings.HasPrefix(v, "{") && strings.HasSuffix(v, "}")) ||
+						(strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]")) {
+						var jsonObj any
+						if err := json.Unmarshal([]byte(v), &jsonObj); err == nil {
+							m[colName] = jsonObj
+						} else {
+							m[colName] = v
+						}
+					} else {
+						m[colName] = v
+					}
+				default:
+					m[colName] = v
+				}
+			}
+		}
+		result = append(result, m)
+	}
+	return result, nil
 }
 
 func (d *duckDBDAO) Close() error {

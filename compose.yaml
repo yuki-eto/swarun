@@ -40,6 +40,7 @@ services:
 networks:
   default:
     name: swarun_default
+    external: true
 
 volumes:
   controller_data:

@@ -26,19 +26,25 @@ func TestDuckDBDAO(t *testing.T) {
 			Metric:    "latency_ms",
 			Value:     100,
 			Timestamp: now.Add(-10 * time.Second),
-			Labels:    map[string]string{"path": "/api/v1"},
+			WorkerID:  "w1",
+			Path:      "/api/v1",
+			Labels:    map[string]string{"env": "test"},
 		},
 		{
 			Metric:    "latency_ms",
 			Value:     200,
 			Timestamp: now.Add(-5 * time.Second),
-			Labels:    map[string]string{"path": "/api/v1"},
+			WorkerID:  "w1",
+			Path:      "/api/v1",
+			Labels:    map[string]string{"env": "test"},
 		},
 		{
 			Metric:    "latency_ms",
 			Value:     300,
 			Timestamp: now,
-			Labels:    map[string]string{"path": "/api/v1"},
+			WorkerID:  "w1",
+			Path:      "/api/v1",
+			Labels:    map[string]string{"env": "test"},
 		},
 	}
 
@@ -47,7 +53,7 @@ func TestDuckDBDAO(t *testing.T) {
 	}
 
 	t.Run("SelectAll", func(t *testing.T) {
-		res, err := dao.SelectRows(ctx, "latency_ms", map[string]string{"path": "/api/v1"}, now.Add(-20*time.Second), now.Add(time.Second), "", 0)
+		res, err := dao.SelectRows(ctx, "latency_ms", map[string]string{"path": "/api/v1", "worker_id": "w1"}, now.Add(-20*time.Second), now.Add(time.Second), "", 0)
 		if err != nil {
 			t.Fatalf("failed to select rows: %v", err)
 		}
@@ -56,10 +62,35 @@ func TestDuckDBDAO(t *testing.T) {
 		}
 	})
 
+	t.Run("QueryRaw", func(t *testing.T) {
+		res, err := dao.(*duckDBDAO).QueryRaw(ctx, "SELECT metric, value, labels, path, worker_id FROM metrics ORDER BY timestamp")
+		if err != nil {
+			t.Fatalf("failed to query raw: %v", err)
+		}
+		if len(res) != 3 {
+			t.Errorf("expected 3 rows, got %d", len(res))
+		}
+		// labels がオブジェクトとして取得できているか確認
+		m := res[0]
+		labels, ok := m["labels"].(map[string]any)
+		if !ok {
+			t.Errorf("labels is not a map: %T", m["labels"])
+		} else if labels["env"] != "test" {
+			t.Errorf("expected env test, got %v", labels["env"])
+		}
+		if m["path"] != "/api/v1" {
+			t.Errorf("expected path /api/v1, got %v", m["path"])
+		}
+		if m["worker_id"] != "w1" {
+			t.Errorf("expected worker_id w1, got %v", m["worker_id"])
+		}
+	})
+
 	t.Run("AggregateMean", func(t *testing.T) {
 		// すべて一つの 30秒ウィンドウに入るように、十分長いウィンドウを指定
 		// または開始時刻をウィンドウの境界に合わせる
-		res, err := dao.SelectRows(ctx, "latency_ms", map[string]string{"path": "/api/v1"}, now.Add(-20*time.Second), now.Add(time.Second), "mean", 60*time.Second)
+		// DuckDB の time_bucket は Unix epoch (1970-01-01) 起点なので、ウィンドウサイズより大きく離れた時刻だと境界に注意が必要
+		res, err := dao.SelectRows(ctx, "latency_ms", map[string]string{"path": "/api/v1", "worker_id": "w1"}, now.Add(-20*time.Second), now.Add(time.Second), "mean", 1*time.Hour)
 		if err != nil {
 			t.Fatalf("failed to aggregate rows: %v", err)
 		}
@@ -77,7 +108,7 @@ func TestDuckDBDAO(t *testing.T) {
 		// 5秒ウィンドウで集計
 		// 10s前(100), 5s前(200), 0s(300)
 		// ウィンドウ境界によっては分かれる
-		res, err := dao.SelectRows(ctx, "latency_ms", map[string]string{"path": "/api/v1"}, now.Add(-20*time.Second), now.Add(time.Second), "sum", 2*time.Second)
+		res, err := dao.SelectRows(ctx, "latency_ms", map[string]string{"path": "/api/v1", "worker_id": "w1"}, now.Add(-20*time.Second), now.Add(time.Second), "sum", 2*time.Second)
 		if err != nil {
 			t.Fatalf("failed to aggregate rows: %v", err)
 		}
@@ -94,19 +125,22 @@ func TestDuckDBDAO(t *testing.T) {
 				Metric:    "success",
 				Value:     1.0,
 				Timestamp: now,
-				Labels:    map[string]string{"path": "/api/v1"},
+				WorkerID:  "w1",
+				Path:      "/api/v1",
 			},
 			{
 				Metric:    "success",
 				Value:     1.0,
 				Timestamp: now,
-				Labels:    map[string]string{"path": "/api/v2"},
+				WorkerID:  "w2",
+				Path:      "/api/v2",
 			},
 			{
 				Metric:    "failure",
 				Value:     1.0,
 				Timestamp: now,
-				Labels:    map[string]string{"path": "/api/v1"},
+				WorkerID:  "w1",
+				Path:      "/api/v1",
 			},
 		}
 		if err := dao.InsertRows(ctx, rows); err != nil {
@@ -183,7 +217,8 @@ func TestDuckDBDAO(t *testing.T) {
 					Metric:    "latency_ms",
 					Value:     150,
 					Timestamp: now,
-					Labels:    map[string]string{"path": "/api/worker", "worker_id": "worker-1"},
+					WorkerID:  "worker-1",
+					Path:      "/api/worker",
 				},
 			}
 			if err := dao.InsertRows(ctx, workerRows); err != nil {

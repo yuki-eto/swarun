@@ -8,9 +8,11 @@ import (
 // Row は単一のメトリクス行を表します。
 type Row struct {
 	Metric    string
-	Labels    map[string]string
 	Timestamp time.Time
 	Value     float64
+	WorkerID  string            // 追加
+	Path      string            // 追加
+	Labels    map[string]string // その他のカスタムラベル
 }
 
 // MetricsDAO はメトリクスの保存と読み取りを担当するインターフェースです。
@@ -23,6 +25,8 @@ type MetricsDAO interface {
 	// SelectStats は指定されたメトリクスの統計（成功数、失敗数、平均レイテンシなど）を取得します。
 	// labels でフィルタリング可能です。
 	SelectStats(ctx context.Context, labels map[string]string, start, end time.Time) (map[string]float64, map[string]map[string]float64, error)
+	// QueryRaw はバックエンド固有のクエリ（DuckDBならSQL、InfluxDBならFlux）を直接実行します。
+	QueryRaw(ctx context.Context, query string) ([]map[string]any, error)
 	// Close はリソースを解放します。
 	Close() error
 }
