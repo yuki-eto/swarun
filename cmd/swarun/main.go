@@ -24,9 +24,9 @@ func main() {
 		runCount        int64
 		controllerAddr  string
 		command         string
-		launchMode      string
 		rampUp          time.Duration
 		stages          string
+		maxDuration     time.Duration
 		s3Bucket        string
 		s3Prefix        string
 		s3Region        string
@@ -50,7 +50,7 @@ func main() {
 	flag.Int64Var(&runCount, "run-count", 0, "Number of runs")
 	flag.StringVar(&controllerAddr, "controller", "http://localhost:8080", "Controller address")
 	flag.StringVar(&command, "cmd", "list-workers", "Client command: run-test, get-status, watch-status, get-metrics, list-workers, provision-workers, teardown-workers, teardown-worker, export-s3, import-s3, export-data, import-data")
-	flag.StringVar(&launchMode, "launch-mode", "local", "Launch mode for provision-workers: local, docker, ecs")
+	flag.DurationVar(&maxDuration, "max-duration", 0, "Max test duration (default: duration * 2)")
 	flag.DurationVar(&rampUp, "ramp-up", 0, "Ramp up duration (e.g., 10s, 1m)")
 	flag.StringVar(&stages, "stages", "", "Ramp up stages (e.g., \"10:10s,20:30s\")")
 	flag.StringVar(&s3Bucket, "s3-bucket", "", "S3 bucket for export/import")
@@ -88,12 +88,8 @@ func main() {
 		TotalRequests:   runCount,
 		RampUp:          rampUp,
 		Stages:          stages,
+		MaxDuration:     maxDuration,
 		S3Bucket:        s3Bucket,
-		S3Prefix:        s3Prefix,
-		S3Region:        s3Region,
-		WorkerCount:     workerCount,
-		LaunchMode:      launchMode,
-		DockerImage:     dockerImage,
 		ECSCluster:      ecsCluster,
 		ECSTaskDef:      ecsTaskDef,
 		ECSSubnets:      ecsSubnets,
@@ -182,10 +178,10 @@ func main() {
 	} else {
 		args.WorkerCount = workerCount
 	}
-	if !isFlagPassed("launch-mode") {
-		args.LaunchMode = cfg.LaunchMode
+	if !isFlagPassed("max-duration") {
+		args.MaxDuration = args.Duration * 2
 	} else {
-		args.LaunchMode = launchMode
+		args.MaxDuration = maxDuration
 	}
 	if !isFlagPassed("docker-image") {
 		args.DockerImage = cfg.DockerImage

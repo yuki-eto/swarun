@@ -160,7 +160,6 @@ message ProvisionWorkersResponse {
 
 message RunTestRequest {
   StartTestRequest test_config = 1;
-  repeated string worker_ids = 2; // 空の場合は全ワーカーを対象とする
 }
 
 message RunTestResponse {

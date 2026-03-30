@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -20,7 +19,6 @@ type Config struct {
 	S3Bucket       string        `yaml:"s3_bucket"`
 	S3Region       string        `yaml:"s3_region"`
 	S3Prefix       string        `yaml:"s3_prefix"`
-	LaunchMode     string        `yaml:"launch_mode"`
 	WorkerCount    int           `yaml:"worker_count"`
 	DockerImage    string        `yaml:"docker_image"`
 	ECSRegion      string        `yaml:"ecs_region"`
@@ -32,8 +30,6 @@ type Config struct {
 	Concurrency    int           `yaml:"concurrency"`
 	Duration       time.Duration `yaml:"duration"`
 	TotalRequests  int64         `yaml:"total_requests"`
-	TargetWorkers  []string      `yaml:"target_workers"`
-	Args           []string      `yaml:"args"`
 	AutoStart      bool          `yaml:"auto_start"`
 	// Metrics backend settings
 	MetricsBackend string `yaml:"metrics_backend"` // "duckdb" (default) or "influxdb"
@@ -53,7 +49,6 @@ func DefaultConfig() *Config {
 		LogLevel:       "info",
 		DataDir:        "data",
 		S3Prefix:       "swarun-metrics",
-		LaunchMode:     "local",
 		WorkerCount:    1,
 		DockerImage:    "swarun:latest",
 		Concurrency:    1,
@@ -126,9 +121,6 @@ func LoadEnv(cfg *Config) {
 	if v := os.Getenv("SWARUN_S3_PREFIX"); v != "" {
 		cfg.S3Prefix = v
 	}
-	if v := os.Getenv("SWARUN_LAUNCH_MODE"); v != "" {
-		cfg.LaunchMode = v
-	}
 	if v := os.Getenv("SWARUN_WORKER_COUNT"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {
 			cfg.WorkerCount = i
@@ -169,12 +161,6 @@ func LoadEnv(cfg *Config) {
 		if i, err := strconv.ParseInt(v, 10, 64); err == nil {
 			cfg.TotalRequests = i
 		}
-	}
-	if v := os.Getenv("SWARUN_TARGET_WORKERS"); v != "" {
-		cfg.TargetWorkers = strings.Split(v, ",")
-	}
-	if v := os.Getenv("SWARUN_ARGS"); v != "" {
-		cfg.Args = strings.Split(v, ",")
 	}
 	if v := os.Getenv("SWARUN_AUTO_START"); v != "" {
 		if b, err := strconv.ParseBool(v); err == nil {

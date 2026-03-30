@@ -12,6 +12,7 @@ import (
 
 	swarunv1 "github.com/yuki-eto/swarun/gen/proto/v1"
 	"github.com/yuki-eto/swarun/pkg/client"
+	"github.com/yuki-eto/swarun/pkg/config"
 	"github.com/yuki-eto/swarun/pkg/logging"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -28,14 +29,13 @@ type ClientArgs struct {
 	Concurrency     int
 	Duration        time.Duration
 	TotalRequests   int64
+	MaxDuration     time.Duration
 	RampUp          time.Duration
 	Stages          string // "target:duration,target:duration"
-	TargetWorkers   []string
 	S3Bucket        string
 	S3Prefix        string
 	S3Region        string
 	WorkerCount     int
-	LaunchMode      string
 	DockerImage     string
 	ECSCluster      string
 	ECSTaskDef      string
@@ -83,11 +83,10 @@ func Run(args ClientArgs, logger *slog.Logger) {
 				Concurrency:    int32(args.Concurrency),
 				Duration:       durationpb.New(args.Duration),
 				TotalRequests:  args.TotalRequests,
-				MaxDuration:    durationpb.New(args.Duration * 2), // Default safety max
+				MaxDuration:    durationpb.New(args.MaxDuration),
 				RampUpDuration: durationpb.New(args.RampUp),
 				Stages:         stages,
 			},
-			WorkerIds: args.TargetWorkers,
 		})
 		if err != nil {
 			logger.Error("Failed to run test", logging.ErrorAttr(err))
@@ -268,13 +267,18 @@ func Run(args ClientArgs, logger *slog.Logger) {
 		logger.Info("ImportFromS3 response", "success", resp.GetSuccess(), "message", resp.GetMessage())
 
 	case "provision-workers":
+		cfg, err := config.Load(nil)
+		if err != nil {
+			logger.Error("Failed to load config", logging.ErrorAttr(err))
+			os.Exit(1)
+		}
 		req := &swarunv1.ProvisionWorkersRequest{
 			Count: int32(args.WorkerCount),
 		}
 		if args.ControllerAddr != "" {
 			req.ControllerAddress = args.ControllerAddr
 		}
-		switch args.LaunchMode {
+		switch cfg.Platform {
 		case "local":
 			req.Mode = &swarunv1.ProvisionWorkersRequest_Local{
 				Local: &swarunv1.LocalMode{},
@@ -294,7 +298,7 @@ func Run(args ClientArgs, logger *slog.Logger) {
 				},
 			}
 		default:
-			logger.Error("Unknown launch mode", "mode", args.LaunchMode)
+			logger.Error("Unknown platform", "platform", cfg.Platform)
 			os.Exit(1)
 		}
 

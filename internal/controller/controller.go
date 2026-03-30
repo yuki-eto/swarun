@@ -275,23 +275,11 @@ func (c *Controller) RunTest(
 		testConfig.TestRunId = testRunID
 	}
 
-	targetWorkerIDs := req.Msg.GetWorkerIds()
-
 	allWorkers := c.workers.Load()
 	var workersToStart []*Worker
 
-	if len(targetWorkerIDs) > 0 {
-		for _, id := range targetWorkerIDs {
-			if w, ok := allWorkers[id]; ok {
-				workersToStart = append(workersToStart, w)
-			} else {
-				c.logger.Warn("Target worker not found", "worker_id", id)
-			}
-		}
-	} else {
-		for _, w := range allWorkers {
-			workersToStart = append(workersToStart, w)
-		}
+	for _, w := range allWorkers {
+		workersToStart = append(workersToStart, w)
 	}
 
 	if len(workersToStart) == 0 {
