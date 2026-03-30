@@ -38,6 +38,7 @@ func main() {
 		labels          string
 		startTime       string
 		endTime         string
+		workerID        string
 	)
 	flag.IntVar(&concurrency, "concurrency", 10, "Concurrency")
 	flag.IntVar(&workerCount, "worker-count", 1, "Number of workers")
@@ -48,7 +49,7 @@ func main() {
 	flag.Int64Var(&duration, "duration", 10, "Test duration sec")
 	flag.Int64Var(&runCount, "run-count", 0, "Number of runs")
 	flag.StringVar(&controllerAddr, "controller", "http://localhost:8080", "Controller address")
-	flag.StringVar(&command, "cmd", "list-workers", "Client command: run-test, get-status, watch-status, get-metrics, list-workers, provision-workers, teardown-workers, export-s3, import-s3, export-data, import-data")
+	flag.StringVar(&command, "cmd", "list-workers", "Client command: run-test, get-status, watch-status, get-metrics, list-workers, provision-workers, teardown-workers, teardown-worker, export-s3, import-s3, export-data, import-data")
 	flag.StringVar(&launchMode, "launch-mode", "local", "Launch mode for provision-workers: local, docker, ecs")
 	flag.DurationVar(&rampUp, "ramp-up", 0, "Ramp up duration (e.g., 10s, 1m)")
 	flag.StringVar(&stages, "stages", "", "Ramp up stages (e.g., \"10:10s,20:30s\")")
@@ -63,6 +64,7 @@ func main() {
 	flag.StringVar(&labels, "labels", "", "Metric labels (comma separated k=v, e.g., worker_id=w1,env=prod)")
 	flag.StringVar(&startTime, "start-time", "", "Start time for get-metrics (RFC3339)")
 	flag.StringVar(&endTime, "end-time", "", "End time for get-metrics (RFC3339)")
+	flag.StringVar(&workerID, "worker-id", "", "Worker ID for teardown-worker")
 	flag.Parse()
 
 	cfg, err := config.Load(nil)
@@ -97,6 +99,7 @@ func main() {
 		ECSSubnets:      ecsSubnets,
 		ECSSG:           ecsSG,
 		Labels:          make(map[string]string),
+		WorkerID:        workerID,
 	}
 
 	if labels != "" {
@@ -139,46 +142,75 @@ func main() {
 
 	if !isFlagPassed("controller") {
 		args.ControllerAddr = cfg.ControllerAddr
+	} else {
+		args.ControllerAddr = controllerAddr
 	}
 	if !isFlagPassed("cmd") {
 		args.Command = cfg.Command
+	} else {
+		args.Command = command
 	}
 	if !isFlagPassed("concurrency") {
 		args.Concurrency = cfg.Concurrency
+	} else {
+		args.Concurrency = concurrency
 	}
 	if !isFlagPassed("duration") && !isFlagPassed("run-count") {
 		args.Duration = cfg.Duration
 		args.TotalRequests = cfg.TotalRequests
+	} else {
+		args.Duration = time.Duration(duration) * time.Second
+		args.TotalRequests = runCount
 	}
 	if !isFlagPassed("s3-bucket") {
 		args.S3Bucket = cfg.S3Bucket
+	} else {
+		args.S3Bucket = s3Bucket
 	}
 	if !isFlagPassed("s3-prefix") {
 		args.S3Prefix = cfg.S3Prefix
+	} else {
+		args.S3Prefix = s3Prefix
 	}
 	if !isFlagPassed("s3-region") {
 		args.S3Region = cfg.S3Region
+	} else {
+		args.S3Region = s3Region
 	}
 	if !isFlagPassed("worker-count") {
 		args.WorkerCount = cfg.WorkerCount
+	} else {
+		args.WorkerCount = workerCount
 	}
 	if !isFlagPassed("launch-mode") {
 		args.LaunchMode = cfg.LaunchMode
+	} else {
+		args.LaunchMode = launchMode
 	}
 	if !isFlagPassed("docker-image") {
 		args.DockerImage = cfg.DockerImage
+	} else {
+		args.DockerImage = dockerImage
 	}
 	if !isFlagPassed("ecs-cluster") {
 		args.ECSCluster = cfg.ECSCluster
+	} else {
+		args.ECSCluster = ecsCluster
 	}
 	if !isFlagPassed("ecs-task-def") {
 		args.ECSTaskDef = cfg.ECSTaskDef
+	} else {
+		args.ECSTaskDef = ecsTaskDef
 	}
 	if !isFlagPassed("ecs-subnets") {
 		args.ECSSubnets = cfg.ECSSubnets
+	} else {
+		args.ECSSubnets = ecsSubnets
 	}
 	if !isFlagPassed("ecs-sg") {
 		args.ECSSG = cfg.ECSSG
+	} else {
+		args.ECSSG = ecsSG
 	}
 
 	client.Run(args, logger)

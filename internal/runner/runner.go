@@ -62,6 +62,10 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 
 	r.logger.Info("Runner finished")
+	// 最後のメトリクスを確実に送信するために Flush を呼ぶ
+	if err := swarun.Flush(ctx); err != nil {
+		r.logger.Error("Failed to flush metrics in runner", logging.ErrorAttr(err))
+	}
 	r.results <- Result{Success: true, Latency: 0} // 特殊なメトリクスとして test_finished を送るためのダミー
 }
 

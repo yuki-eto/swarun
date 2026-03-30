@@ -49,8 +49,14 @@ func NewDuckDBDAO(dataDir, testRunID string) (MetricsDAO, error) {
 			timestamp TIMESTAMP,
 			metric TEXT,
 			value DOUBLE,
+			path TEXT,
+			worker_id TEXT,
 			labels JSON
-		)
+		);
+		CREATE INDEX IF NOT EXISTS idx_path ON metrics (path);
+		CREATE INDEX IF NOT EXISTS idx_worker_id ON metrics (worker_id);
+		CREATE INDEX IF NOT EXISTS idx_timestamp ON metrics (timestamp);
+		CREATE INDEX IF NOT EXISTS idx_metric ON metrics (metric);
 	`)
 	if err != nil {
 		db.Close()
@@ -70,18 +76,21 @@ func (d *duckDBDAO) InsertRows(ctx context.Context, rows []Row) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, "INSERT INTO metrics (timestamp, metric, value, labels) VALUES (?, ?, ?, ?)")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO metrics (timestamp, metric, value, path, worker_id, labels) VALUES (?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, r := range rows {
+		path := r.Labels["path"]
+		workerID := r.Labels["worker_id"]
+
 		labelsJSON, err := json.Marshal(r.Labels)
 		if err != nil {
 			return err
 		}
-		if _, err := stmt.ExecContext(ctx, r.Timestamp, r.Metric, r.Value, string(labelsJSON)); err != nil {
+		if _, err := stmt.ExecContext(ctx, r.Timestamp, r.Metric, r.Value, path, workerID, string(labelsJSON)); err != nil {
 			return err
 		}
 	}
@@ -116,8 +125,16 @@ func (d *duckDBDAO) SelectRows(ctx context.Context, metric string, labels map[st
 			labels = make(map[string]string)
 		}
 		for k, v := range labels {
-			query += " AND json_extract_path_text(labels, ?) = ?"
-			args = append(args, "/"+k, v)
+			if k == "path" {
+				query += " AND path = ?"
+				args = append(args, v)
+			} else if k == "worker_id" {
+				query += " AND worker_id = ?"
+				args = append(args, v)
+			} else {
+				query += " AND json_extract_path_text(labels, ?) = ?"
+				args = append(args, "/"+k, v)
+			}
 		}
 
 		query += " GROUP BY bucket ORDER BY bucket"
@@ -130,8 +147,16 @@ func (d *duckDBDAO) SelectRows(ctx context.Context, metric string, labels map[st
 			labels = make(map[string]string)
 		}
 		for k, v := range labels {
-			query += " AND json_extract_path_text(labels, ?) = ?"
-			args = append(args, "/"+k, v)
+			if k == "path" {
+				query += " AND path = ?"
+				args = append(args, v)
+			} else if k == "worker_id" {
+				query += " AND worker_id = ?"
+				args = append(args, v)
+			} else {
+				query += " AND json_extract_path_text(labels, ?) = ?"
+				args = append(args, "/"+k, v)
+			}
 		}
 		query += " ORDER BY timestamp"
 	}
@@ -200,8 +225,16 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	overallArgs = append(overallArgs, start, end)
 
 	for k, v := range labels {
-		overallQuery += " AND json_extract_path_text(labels, ?) = ?"
-		overallArgs = append(overallArgs, "/"+k, v)
+		if k == "path" {
+			overallQuery += " AND path = ?"
+			overallArgs = append(overallArgs, v)
+		} else if k == "worker_id" {
+			overallQuery += " AND worker_id = ?"
+			overallArgs = append(overallArgs, v)
+		} else {
+			overallQuery += " AND json_extract_path_text(labels, ?) = ?"
+			overallArgs = append(overallArgs, "/"+k, v)
+		}
 	}
 	overallQuery += " GROUP BY metric"
 
@@ -236,9 +269,9 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	pathQuery := `
 		SELECT 
 			CASE 
-				WHEN json_extract_path_text(labels, '/path') IS NULL OR json_extract_path_text(labels, '/path') = '' 
+				WHEN path IS NULL OR path = '' 
 				THEN 'unknown' 
-				ELSE json_extract_path_text(labels, '/path') 
+				ELSE path 
 			END as extracted_path,
 			metric,
 			SUM(value) as total,
@@ -252,8 +285,16 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	pathArgs = append(pathArgs, start, end)
 
 	for k, v := range labels {
-		pathQuery += " AND json_extract_path_text(labels, ?) = ?"
-		pathArgs = append(pathArgs, "/"+k, v)
+		if k == "path" {
+			pathQuery += " AND path = ?"
+			pathArgs = append(pathArgs, v)
+		} else if k == "worker_id" {
+			pathQuery += " AND worker_id = ?"
+			pathArgs = append(pathArgs, v)
+		} else {
+			pathQuery += " AND json_extract_path_text(labels, ?) = ?"
+			pathArgs = append(pathArgs, "/"+k, v)
+		}
 	}
 	pathQuery += " GROUP BY extracted_path, metric"
 

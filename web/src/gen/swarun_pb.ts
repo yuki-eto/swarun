@@ -81,6 +81,86 @@ export class TeardownWorkersResponse extends Message<TeardownWorkersResponse> {
 }
 
 /**
+ * @generated from message swarun.v1.TeardownWorkerRequest
+ */
+export class TeardownWorkerRequest extends Message<TeardownWorkerRequest> {
+  /**
+   * @generated from field: string worker_id = 1;
+   */
+  workerId = "";
+
+  constructor(data?: PartialMessage<TeardownWorkerRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "swarun.v1.TeardownWorkerRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "worker_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): TeardownWorkerRequest {
+    return new TeardownWorkerRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): TeardownWorkerRequest {
+    return new TeardownWorkerRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): TeardownWorkerRequest {
+    return new TeardownWorkerRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: TeardownWorkerRequest | PlainMessage<TeardownWorkerRequest> | undefined, b: TeardownWorkerRequest | PlainMessage<TeardownWorkerRequest> | undefined): boolean {
+    return proto3.util.equals(TeardownWorkerRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message swarun.v1.TeardownWorkerResponse
+ */
+export class TeardownWorkerResponse extends Message<TeardownWorkerResponse> {
+  /**
+   * @generated from field: bool success = 1;
+   */
+  success = false;
+
+  /**
+   * @generated from field: string message = 2;
+   */
+  message = "";
+
+  constructor(data?: PartialMessage<TeardownWorkerResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "swarun.v1.TeardownWorkerResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "success", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 2, name: "message", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): TeardownWorkerResponse {
+    return new TeardownWorkerResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): TeardownWorkerResponse {
+    return new TeardownWorkerResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): TeardownWorkerResponse {
+    return new TeardownWorkerResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: TeardownWorkerResponse | PlainMessage<TeardownWorkerResponse> | undefined, b: TeardownWorkerResponse | PlainMessage<TeardownWorkerResponse> | undefined): boolean {
+    return proto3.util.equals(TeardownWorkerResponse, a, b);
+  }
+}
+
+/**
  * @generated from message swarun.v1.ListTestRunsRequest
  */
 export class ListTestRunsRequest extends Message<ListTestRunsRequest> {
@@ -116,9 +196,9 @@ export class ListTestRunsRequest extends Message<ListTestRunsRequest> {
  */
 export class ListTestRunsResponse extends Message<ListTestRunsResponse> {
   /**
-   * @generated from field: repeated string test_run_ids = 1;
+   * @generated from field: repeated swarun.v1.TestRunSummary test_runs = 1;
    */
-  testRunIds: string[] = [];
+  testRuns: TestRunSummary[] = [];
 
   constructor(data?: PartialMessage<ListTestRunsResponse>) {
     super();
@@ -128,7 +208,7 @@ export class ListTestRunsResponse extends Message<ListTestRunsResponse> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "swarun.v1.ListTestRunsResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
-    { no: 1, name: "test_run_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+    { no: 1, name: "test_runs", kind: "message", T: TestRunSummary, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListTestRunsResponse {
@@ -145,6 +225,79 @@ export class ListTestRunsResponse extends Message<ListTestRunsResponse> {
 
   static equals(a: ListTestRunsResponse | PlainMessage<ListTestRunsResponse> | undefined, b: ListTestRunsResponse | PlainMessage<ListTestRunsResponse> | undefined): boolean {
     return proto3.util.equals(ListTestRunsResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message swarun.v1.TestRunSummary
+ */
+export class TestRunSummary extends Message<TestRunSummary> {
+  /**
+   * @generated from field: string test_run_id = 1;
+   */
+  testRunId = "";
+
+  /**
+   * @generated from field: google.protobuf.Timestamp start_time = 2;
+   */
+  startTime?: Timestamp;
+
+  /**
+   * @generated from field: bool is_running = 3;
+   */
+  isRunning = false;
+
+  /**
+   * @generated from field: int32 concurrency = 4;
+   */
+  concurrency = 0;
+
+  /**
+   * @generated from field: int32 worker_count = 5;
+   */
+  workerCount = 0;
+
+  /**
+   * @generated from field: double rps = 6;
+   */
+  rps = 0;
+
+  /**
+   * @generated from field: double avg_latency_ms = 7;
+   */
+  avgLatencyMs = 0;
+
+  constructor(data?: PartialMessage<TestRunSummary>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "swarun.v1.TestRunSummary";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "test_run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "start_time", kind: "message", T: Timestamp },
+    { no: 3, name: "is_running", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "concurrency", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 5, name: "worker_count", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 6, name: "rps", kind: "scalar", T: 1 /* ScalarType.DOUBLE */ },
+    { no: 7, name: "avg_latency_ms", kind: "scalar", T: 1 /* ScalarType.DOUBLE */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): TestRunSummary {
+    return new TestRunSummary().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): TestRunSummary {
+    return new TestRunSummary().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): TestRunSummary {
+    return new TestRunSummary().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: TestRunSummary | PlainMessage<TestRunSummary> | undefined, b: TestRunSummary | PlainMessage<TestRunSummary> | undefined): boolean {
+    return proto3.util.equals(TestRunSummary, a, b);
   }
 }
 

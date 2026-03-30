@@ -44,6 +44,7 @@ type ClientArgs struct {
 	Labels          map[string]string
 	StartTime       time.Time
 	EndTime         time.Time
+	WorkerID        string
 }
 
 // Run はクライアントモードを実行します。
@@ -268,8 +269,10 @@ func Run(args ClientArgs, logger *slog.Logger) {
 
 	case "provision-workers":
 		req := &swarunv1.ProvisionWorkersRequest{
-			Count:             int32(args.WorkerCount),
-			ControllerAddress: args.ControllerAddr,
+			Count: int32(args.WorkerCount),
+		}
+		if args.ControllerAddr != "" {
+			req.ControllerAddress = args.ControllerAddr
 		}
 		switch args.LaunchMode {
 		case "local":
@@ -309,6 +312,19 @@ func Run(args ClientArgs, logger *slog.Logger) {
 			os.Exit(1)
 		}
 		logger.Info("TeardownWorkers response", "success", resp.GetSuccess(), "message", resp.GetMessage())
+
+	case "teardown-worker":
+		workerID := args.WorkerID
+		if workerID == "" {
+			logger.Error("-worker-id is required for teardown-worker")
+			os.Exit(1)
+		}
+		resp, err := c.TeardownWorker(ctx, workerID)
+		if err != nil {
+			logger.Error("Failed to teardown worker", logging.ErrorAttr(err))
+			os.Exit(1)
+		}
+		logger.Info("TeardownWorker response", "success", resp.GetSuccess(), "message", resp.GetMessage())
 
 	case "export-data":
 		stream, err := c.ExportData(ctx)

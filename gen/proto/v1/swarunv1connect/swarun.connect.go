@@ -68,6 +68,9 @@ const (
 	// ControllerServiceTeardownWorkersProcedure is the fully-qualified name of the ControllerService's
 	// TeardownWorkers RPC.
 	ControllerServiceTeardownWorkersProcedure = "/swarun.v1.ControllerService/TeardownWorkers"
+	// ControllerServiceTeardownWorkerProcedure is the fully-qualified name of the ControllerService's
+	// TeardownWorker RPC.
+	ControllerServiceTeardownWorkerProcedure = "/swarun.v1.ControllerService/TeardownWorker"
 	// ControllerServiceStopTestProcedure is the fully-qualified name of the ControllerService's
 	// StopTest RPC.
 	ControllerServiceStopTestProcedure = "/swarun.v1.ControllerService/StopTest"
@@ -114,6 +117,8 @@ type ControllerServiceClient interface {
 	ProvisionWorkers(context.Context, *connect.Request[v1.ProvisionWorkersRequest]) (*connect.Response[v1.ProvisionWorkersResponse], error)
 	// TeardownWorkers は起動した全ワーカーノードを停止・削除します。
 	TeardownWorkers(context.Context, *connect.Request[v1.TeardownWorkersRequest]) (*connect.Response[v1.TeardownWorkersResponse], error)
+	// TeardownWorker は特定のワーカーノードを停止・削除します。
+	TeardownWorker(context.Context, *connect.Request[v1.TeardownWorkerRequest]) (*connect.Response[v1.TeardownWorkerResponse], error)
 	// StopTest は実行中のテストを停止します（全ワーカーに停止を通知）。
 	StopTest(context.Context, *connect.Request[v1.StopTestRequest]) (*connect.Response[v1.StopTestResponse], error)
 	// ListTestRuns は過去のテスト実行ID一覧を取得します。
@@ -203,6 +208,12 @@ func NewControllerServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(controllerServiceMethods.ByName("TeardownWorkers")),
 			connect.WithClientOptions(opts...),
 		),
+		teardownWorker: connect.NewClient[v1.TeardownWorkerRequest, v1.TeardownWorkerResponse](
+			httpClient,
+			baseURL+ControllerServiceTeardownWorkerProcedure,
+			connect.WithSchema(controllerServiceMethods.ByName("TeardownWorker")),
+			connect.WithClientOptions(opts...),
+		),
 		stopTest: connect.NewClient[v1.StopTestRequest, v1.StopTestResponse](
 			httpClient,
 			baseURL+ControllerServiceStopTestProcedure,
@@ -249,6 +260,7 @@ type controllerServiceClient struct {
 	getMetrics       *connect.Client[v1.GetMetricsRequest, v1.GetMetricsResponse]
 	provisionWorkers *connect.Client[v1.ProvisionWorkersRequest, v1.ProvisionWorkersResponse]
 	teardownWorkers  *connect.Client[v1.TeardownWorkersRequest, v1.TeardownWorkersResponse]
+	teardownWorker   *connect.Client[v1.TeardownWorkerRequest, v1.TeardownWorkerResponse]
 	stopTest         *connect.Client[v1.StopTestRequest, v1.StopTestResponse]
 	listTestRuns     *connect.Client[v1.ListTestRunsRequest, v1.ListTestRunsResponse]
 	exportReport     *connect.Client[v1.ExportReportRequest, v1.ExportReportResponse]
@@ -311,6 +323,11 @@ func (c *controllerServiceClient) TeardownWorkers(ctx context.Context, req *conn
 	return c.teardownWorkers.CallUnary(ctx, req)
 }
 
+// TeardownWorker calls swarun.v1.ControllerService.TeardownWorker.
+func (c *controllerServiceClient) TeardownWorker(ctx context.Context, req *connect.Request[v1.TeardownWorkerRequest]) (*connect.Response[v1.TeardownWorkerResponse], error) {
+	return c.teardownWorker.CallUnary(ctx, req)
+}
+
 // StopTest calls swarun.v1.ControllerService.StopTest.
 func (c *controllerServiceClient) StopTest(ctx context.Context, req *connect.Request[v1.StopTestRequest]) (*connect.Response[v1.StopTestResponse], error) {
 	return c.stopTest.CallUnary(ctx, req)
@@ -361,6 +378,8 @@ type ControllerServiceHandler interface {
 	ProvisionWorkers(context.Context, *connect.Request[v1.ProvisionWorkersRequest]) (*connect.Response[v1.ProvisionWorkersResponse], error)
 	// TeardownWorkers は起動した全ワーカーノードを停止・削除します。
 	TeardownWorkers(context.Context, *connect.Request[v1.TeardownWorkersRequest]) (*connect.Response[v1.TeardownWorkersResponse], error)
+	// TeardownWorker は特定のワーカーノードを停止・削除します。
+	TeardownWorker(context.Context, *connect.Request[v1.TeardownWorkerRequest]) (*connect.Response[v1.TeardownWorkerResponse], error)
 	// StopTest は実行中のテストを停止します（全ワーカーに停止を通知）。
 	StopTest(context.Context, *connect.Request[v1.StopTestRequest]) (*connect.Response[v1.StopTestResponse], error)
 	// ListTestRuns は過去のテスト実行ID一覧を取得します。
@@ -446,6 +465,12 @@ func NewControllerServiceHandler(svc ControllerServiceHandler, opts ...connect.H
 		connect.WithSchema(controllerServiceMethods.ByName("TeardownWorkers")),
 		connect.WithHandlerOptions(opts...),
 	)
+	controllerServiceTeardownWorkerHandler := connect.NewUnaryHandler(
+		ControllerServiceTeardownWorkerProcedure,
+		svc.TeardownWorker,
+		connect.WithSchema(controllerServiceMethods.ByName("TeardownWorker")),
+		connect.WithHandlerOptions(opts...),
+	)
 	controllerServiceStopTestHandler := connect.NewUnaryHandler(
 		ControllerServiceStopTestProcedure,
 		svc.StopTest,
@@ -500,6 +525,8 @@ func NewControllerServiceHandler(svc ControllerServiceHandler, opts ...connect.H
 			controllerServiceProvisionWorkersHandler.ServeHTTP(w, r)
 		case ControllerServiceTeardownWorkersProcedure:
 			controllerServiceTeardownWorkersHandler.ServeHTTP(w, r)
+		case ControllerServiceTeardownWorkerProcedure:
+			controllerServiceTeardownWorkerHandler.ServeHTTP(w, r)
 		case ControllerServiceStopTestProcedure:
 			controllerServiceStopTestHandler.ServeHTTP(w, r)
 		case ControllerServiceListTestRunsProcedure:
@@ -561,6 +588,10 @@ func (UnimplementedControllerServiceHandler) ProvisionWorkers(context.Context, *
 
 func (UnimplementedControllerServiceHandler) TeardownWorkers(context.Context, *connect.Request[v1.TeardownWorkersRequest]) (*connect.Response[v1.TeardownWorkersResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("swarun.v1.ControllerService.TeardownWorkers is not implemented"))
+}
+
+func (UnimplementedControllerServiceHandler) TeardownWorker(context.Context, *connect.Request[v1.TeardownWorkerRequest]) (*connect.Response[v1.TeardownWorkerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("swarun.v1.ControllerService.TeardownWorker is not implemented"))
 }
 
 func (UnimplementedControllerServiceHandler) StopTest(context.Context, *connect.Request[v1.StopTestRequest]) (*connect.Response[v1.StopTestResponse], error) {

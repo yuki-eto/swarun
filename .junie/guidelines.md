@@ -49,6 +49,8 @@ go build -o tmp/swarun ./cmd/swarun/main.go
 go build -o tmp/swarun-example ./examples/simple-get/main.go
 ```
 
+**Important**: When modifying worker-side code (e.g., `internal/worker` or `pkg/swarun`), ensure to run `make docker-build` to build the latest Docker image.
+
 ## Testing Information
 
 ### Running Tests
@@ -193,7 +195,15 @@ sc := swarun.ScenarioFunc(func(ctx context.Context) error {
 })
 ```
 
+- **Flush Metrics**: Always call `swarun.Flush()` before sending the `test_finished` signal to ensure all buffered metrics are sent.
+- **Error Handling**: Check logs for metrics transmission errors from `pkg/swarun` during development.
+- **Controller Termination Grace Period**: The controller uses a 2-second grace period after receiving the last `test_finished` signal to allow any remaining metric batches to be processed.
+
 - **Dashboard**: A React-based web dashboard is integrated into the controller. Access it at `http://localhost:8080` (default port).
+    - **Web Dashboard Development**: When making changes to the web dashboard, ensure there are no linting or formatting errors by running:
+      ```bash
+      make lint-web
+      ```
 - **Ramp-up and Stages**: `swarun` supports flexible ramp-up strategies specified at test execution time. These are not part of the persistent configuration (YAML/Env).
 
 - **Simple Ramp-up**: Use the `-ramp-up` flag to specify a duration to reach the target concurrency linearly.

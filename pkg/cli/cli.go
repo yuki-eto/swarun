@@ -99,8 +99,14 @@ func runController(cfg *config.Config, logger *slog.Logger) {
 
 	logger.Info("Starting controller", "port", cfg.Port)
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: h2c.NewHandler(mux, &http2.Server{}),
+		Addr: fmt.Sprintf(":%d", cfg.Port),
+		Handler: h2c.NewHandler(mux, &http2.Server{
+			IdleTimeout:          1 * time.Minute,
+			MaxReadFrameSize:     1024 * 1024,
+			MaxConcurrentStreams: 1000,
+		}),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
 	}
 
 	// Graceful shutdown
@@ -157,13 +163,27 @@ func runWorker(cfg *config.Config, sc swarun.Scenario, logger *slog.Logger) {
 		}
 
 		// Heartbeat loop
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
+		slog.Debug("Starting heartbeat loop")
+		failCount := 0
 		for range ticker.C {
-			_, err := client.Heartbeat(context.Background(), connect.NewRequest(&swarunv1.HeartbeatRequest{
+			resp, err := client.Heartbeat(context.Background(), connect.NewRequest(&swarunv1.HeartbeatRequest{
 				WorkerId: cfg.WorkerID,
 			}))
-			if err != nil {
-				logger.Warn("Heartbeat failed", "error", err)
+			if err != nil || !resp.Msg.Acknowledged {
+				failCount++
+				if err != nil {
+					logger.Warn("Heartbeat failed", "error", err, "fail_count", failCount)
+				} else {
+					logger.Warn("Heartbeat rejected by controller", "fail_count", failCount)
+				}
+
+				if failCount >= 3 {
+					logger.Error("Heartbeat failed 3 consecutive times. Shutting down worker...")
+					os.Exit(1)
+				}
+			} else {
+				failCount = 0
 			}
 		}
 	}()

@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ExportDataRequest, ExportDataResponse, ExportReportRequest, ExportReportResponse, ExportToS3Request, ExportToS3Response, GetMetricsRequest, GetMetricsResponse, GetTestStatusRequest, GetTestStatusResponse, HeartbeatRequest, HeartbeatResponse, ImportDataRequest, ImportDataResponse, ImportFromS3Request, ImportFromS3Response, ListTestRunsRequest, ListTestRunsResponse, ListWorkersRequest, ListWorkersResponse, MetricBatch, ProvisionWorkersRequest, ProvisionWorkersResponse, RegisterWorkerRequest, RegisterWorkerResponse, RunTestRequest, RunTestResponse, SendMetricsResponse, StartTestRequest, StartTestResponse, StopTestRequest, StopTestResponse, TeardownWorkersRequest, TeardownWorkersResponse } from "./swarun_pb.js";
+import { ExportDataRequest, ExportDataResponse, ExportReportRequest, ExportReportResponse, ExportToS3Request, ExportToS3Response, GetMetricsRequest, GetMetricsResponse, GetTestStatusRequest, GetTestStatusResponse, HeartbeatRequest, HeartbeatResponse, ImportDataRequest, ImportDataResponse, ImportFromS3Request, ImportFromS3Response, ListTestRunsRequest, ListTestRunsResponse, ListWorkersRequest, ListWorkersResponse, MetricBatch, ProvisionWorkersRequest, ProvisionWorkersResponse, RegisterWorkerRequest, RegisterWorkerResponse, RunTestRequest, RunTestResponse, SendMetricsResponse, StartTestRequest, StartTestResponse, StopTestRequest, StopTestResponse, TeardownWorkerRequest, TeardownWorkerResponse, TeardownWorkersRequest, TeardownWorkersResponse } from "./swarun_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -134,6 +134,17 @@ export const ControllerService = {
       name: "TeardownWorkers",
       I: TeardownWorkersRequest,
       O: TeardownWorkersResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * TeardownWorker は特定のワーカーノードを停止・削除します。
+     *
+     * @generated from rpc swarun.v1.ControllerService.TeardownWorker
+     */
+    teardownWorker: {
+      name: "TeardownWorker",
+      I: TeardownWorkerRequest,
+      O: TeardownWorkerResponse,
       kind: MethodKind.Unary,
     },
     /**

@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/yuki-eto/swarun/pkg/config"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -28,9 +29,9 @@ type Orchestrator struct {
 	platform string
 	mu       sync.Mutex
 	// 起動したプロセスやタスクを追跡するための情報
-	localProcesses   []*os.Process
-	dockerContainers []string
-	ecsTasks         []ecsTaskInfo
+	localProcesses   map[string]*os.Process
+	dockerContainers map[string]string      // key: worker_id, value: container_id or name
+	ecsTasks         map[string]ecsTaskInfo // key: worker_id
 }
 
 type ecsTaskInfo struct {
@@ -48,9 +49,12 @@ func NewOrchestrator(logger *slog.Logger, cfg *config.Config) *Orchestrator {
 		platform = cfg.Platform
 	}
 	return &Orchestrator{
-		logger:   logger,
-		cfg:      cfg,
-		platform: platform,
+		logger:           logger,
+		cfg:              cfg,
+		platform:         platform,
+		localProcesses:   make(map[string]*os.Process),
+		dockerContainers: make(map[string]string),
+		ecsTasks:         make(map[string]ecsTaskInfo),
 	}
 }
 
@@ -110,32 +114,38 @@ func (o *Orchestrator) Teardown(ctx context.Context) error {
 	var errs []string
 
 	// Local
-	for _, p := range o.localProcesses {
+	for id, p := range o.localProcesses {
 		if err := p.Kill(); err != nil {
-			errs = append(errs, fmt.Sprintf("failed to kill local process %d: %v", p.Pid, err))
+			errs = append(errs, fmt.Sprintf("failed to kill local process %d (%s): %v", p.Pid, id, err))
 		} else {
-			o.logger.Info("Teared down local worker", "pid", p.Pid)
+			o.logger.Info("Teared down local worker", "id", id, "pid", p.Pid)
 		}
 	}
-	o.localProcesses = nil
+	o.localProcesses = make(map[string]*os.Process)
 
 	// Docker
-	for _, id := range o.dockerContainers {
-		cmd := exec.CommandContext(ctx, "docker", "rm", "-f", id)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			errs = append(errs, fmt.Sprintf("failed to remove docker container %s: %v (output: %s)", id, err, string(out)))
+	if len(o.dockerContainers) > 0 {
+		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		if err == nil {
+			defer cli.Close()
+			for workerID, containerID := range o.dockerContainers {
+				if err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
+					errs = append(errs, fmt.Sprintf("failed to remove docker container %s (%s): %v", containerID, workerID, err))
+				} else {
+					o.logger.Info("Teared down docker worker", "worker_id", workerID, "container_id", containerID)
+				}
+			}
 		} else {
-			o.logger.Info("Teared down docker worker", "id", id)
+			errs = append(errs, fmt.Sprintf("failed to create docker client for teardown: %v", err))
 		}
 	}
-	o.dockerContainers = nil
+	o.dockerContainers = make(map[string]string)
 
 	// ECS
-	// region ごとに client を作る必要があるかもしれないが、一旦シンプルに
-	for _, info := range o.ecsTasks {
+	for workerID, info := range o.ecsTasks {
 		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(info.region))
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("failed to load AWS config for teardown (%s): %v", info.region, err))
+			errs = append(errs, fmt.Sprintf("failed to load AWS config for teardown (%s, %s): %v", info.region, workerID, err))
 			continue
 		}
 		client := ecs.NewFromConfig(cfg)
@@ -145,15 +155,67 @@ func (o *Orchestrator) Teardown(ctx context.Context) error {
 			Reason:  aws.String("Teardown requested by swarun controller"),
 		})
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("failed to stop ECS task %s: %v", info.taskARN, err))
+			errs = append(errs, fmt.Sprintf("failed to stop ECS task %s (%s): %v", info.taskARN, workerID, err))
 		} else {
-			o.logger.Info("Teared down ECS worker", "arn", info.taskARN)
+			o.logger.Info("Teared down ECS worker", "worker_id", workerID, "arn", info.taskARN)
 		}
 	}
-	o.ecsTasks = nil
+	o.ecsTasks = make(map[string]ecsTaskInfo)
 
 	if len(errs) > 0 {
 		return fmt.Errorf("teardown errors: %s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+func (o *Orchestrator) TeardownWorker(ctx context.Context, workerID string) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Local
+	if p, ok := o.localProcesses[workerID]; ok {
+		if err := p.Kill(); err != nil {
+			return fmt.Errorf("failed to kill local process %d (%s): %w", p.Pid, workerID, err)
+		}
+		delete(o.localProcesses, workerID)
+		o.logger.Info("Teared down local worker", "id", workerID, "pid", p.Pid)
+		return nil
+	}
+
+	// Docker
+	if containerID, ok := o.dockerContainers[workerID]; ok {
+		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		if err != nil {
+			return fmt.Errorf("failed to create docker client: %w", err)
+		}
+		defer cli.Close()
+		if err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
+			return fmt.Errorf("failed to remove docker container %s (%s): %w", containerID, workerID, err)
+		}
+		delete(o.dockerContainers, workerID)
+		o.logger.Info("Teared down docker worker", "worker_id", workerID, "container_id", containerID)
+		return nil
+	}
+
+	// ECS
+	if info, ok := o.ecsTasks[workerID]; ok {
+		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(info.region))
+		if err != nil {
+			return fmt.Errorf("failed to load AWS config: %w", err)
+		}
+		client := ecs.NewFromConfig(cfg)
+		_, err = client.StopTask(ctx, &ecs.StopTaskInput{
+			Cluster: aws.String(info.cluster),
+			Task:    aws.String(info.taskARN),
+			Reason:  aws.String("Teardown requested by swarun controller"),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to stop ECS task %s (%s): %w", info.taskARN, workerID, err)
+		}
+		delete(o.ecsTasks, workerID)
+		o.logger.Info("Teared down ECS worker", "worker_id", workerID, "arn", info.taskARN)
+		return nil
+	}
+
+	return fmt.Errorf("worker not found in orchestrator: %s", workerID)
 }

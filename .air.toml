@@ -1,0 +1,27 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # controller モードで実行するためのコマンド
+  cmd = "go build -o ./tmp/main ./examples/simple-get/main.go"
+  bin = "./tmp/main"
+  full_bin = "./tmp/main -mode controller"
+  # 監視する拡張子
+  include_ext = ["go", "yaml", "toml"]
+  # 除外するディレクトリ
+  exclude_dir = ["web", "data", "gen", "tmp"]
+  # 変更検知の遅延
+  delay = 1000 # ms
+  # ビルドエラー時に古いバイナリを停止しない
+  stop_on_error = true
+  # DuckDB 等で CGO が必要な場合は有効にする
+  env = ["CGO_ENABLED=1"]
+
+[log]
+  time = true
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"

@@ -177,5 +177,28 @@ func TestDuckDBDAO(t *testing.T) {
 		} else {
 			t.Errorf("/api/v2 not found in pathStats")
 		}
+		t.Run("SelectWithWorkerID", func(t *testing.T) {
+			workerRows := []Row{
+				{
+					Metric:    "latency_ms",
+					Value:     150,
+					Timestamp: now,
+					Labels:    map[string]string{"path": "/api/worker", "worker_id": "worker-1"},
+				},
+			}
+			if err := dao.InsertRows(ctx, workerRows); err != nil {
+				t.Fatalf("failed to insert worker rows: %v", err)
+			}
+
+			res, err := dao.SelectRows(ctx, "latency_ms", map[string]string{"worker_id": "worker-1"}, now.Add(-time.Second), now.Add(time.Second), "", 0)
+			if err != nil {
+				t.Fatalf("failed to select by worker_id: %v", err)
+			}
+			if len(res) != 1 {
+				t.Errorf("expected 1 row for worker-1, got %d", len(res))
+			} else if res[0].Value != 150 {
+				t.Errorf("expected value 150, got %f", res[0].Value)
+			}
+		})
 	})
 }

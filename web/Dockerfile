@@ -5,7 +5,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # package.json と pnpm-lock.yaml をコピー
-COPY package.json ./
+COPY package.json pnpm-lock.yaml ./
 
 # 依存関係をインストール
 RUN pnpm install

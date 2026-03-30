@@ -55,11 +55,12 @@ func (o *Orchestrator) provisionECS(ctx context.Context, mode *swarunv1.ECSMode,
 	var ids []string
 	for _, task := range output.Tasks {
 		arn := aws.ToString(task.TaskArn)
-		o.ecsTasks = append(o.ecsTasks, ecsTaskInfo{
+		// worker_id は ARN をそのまま使う（RunTask で複数起動した場合、個別の ID を指定する手段が限られるため）
+		o.ecsTasks[arn] = ecsTaskInfo{
 			cluster: mode.Cluster,
 			taskARN: arn,
 			region:  mode.Region,
-		})
+		}
 		ids = append(ids, arn)
 		o.logger.Info("Provisioned ECS task", "arn", arn)
 	}

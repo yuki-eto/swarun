@@ -1,1 +1,17 @@
-/web
+# Git
+.git
+
+# Node.js
+web/node_modules
+web/dist
+
+# Go
+tmp/
+data/
+**/*.test
+**/*.out
+
+# Docker
+Dockerfile
+Dockerfile.dev
+.dockerignore

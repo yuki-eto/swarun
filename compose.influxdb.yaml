@@ -17,26 +17,37 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - default
 
   controller:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
     ports:
       - "8080:8080"
     volumes:
+      - .:/app
       - controller_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - SWARUN_PORT=8080
       - SWARUN_LOG_LEVEL=debug
+      - SWARUN_LOG_FORMAT=text
       - SWARUN_DATA_DIR=/app/data
       - SWARUN_METRICS_BACKEND=influxdb
       - SWARUN_INFLUXDB_URL=http://influxdb:8086
       - SWARUN_INFLUXDB_TOKEN=my-super-secret-auth-token
       - SWARUN_INFLUXDB_ORG=myorg
       - SWARUN_INFLUXDB_BUCKET=swarun
-    command: ["-mode", "controller"]
+      - SWARUN_PLATFORM=docker
+      - SWARUN_DOCKER_IMAGE=swarun:latest
+      - SWARUN_TIMEZONE=Asia/Tokyo
     depends_on:
       influxdb:
         condition: service_healthy
+    networks:
+      - default
 
   worker:
     build: .
@@ -47,6 +58,8 @@ services:
     command: ["-mode", "worker"]
     depends_on:
       - controller
+    networks:
+      - default
 
   dashboard:
     build:
@@ -61,6 +74,12 @@ services:
       - VITE_API_URL=http://controller:8080
     depends_on:
       - controller
+    networks:
+      - default
+
+networks:
+  default:
+    name: swarun_influxdb_default
 
 volumes:
   influxdb_data:

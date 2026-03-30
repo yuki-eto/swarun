@@ -388,6 +388,7 @@ func (c *Controller) GetTestStatus(
 				tr.TotalIterations = 0
 				var totalLatencyMs float64
 				var latencyCount int64
+				var allLatencies []float64
 
 				for path, stats := range pathStats {
 					pm := &swarunv1.PathMetrics{
@@ -424,6 +425,9 @@ func (c *Controller) GetTestStatus(
 							idx95 = len(lats) - 1
 						}
 						pm.P95LatencyMs = lats[idx95]
+						if path != "scenario_iteration" {
+							allLatencies = append(allLatencies, lats...)
+						}
 					}
 					pathMetrics[path] = pm
 
@@ -458,6 +462,24 @@ func (c *Controller) GetTestStatus(
 				}
 				if latencyCount > 0 {
 					avgLatency = totalLatencyMs / float64(latencyCount)
+				}
+				if len(allLatencies) > 0 {
+					slices.SortFunc(allLatencies, cmp.Compare[float64])
+					idx90 := int(float64(len(allLatencies))*0.9+0.99) - 1
+					if idx90 < 0 {
+						idx90 = 0
+					} else if idx90 >= len(allLatencies) {
+						idx90 = len(allLatencies) - 1
+					}
+					p90 = allLatencies[idx90]
+
+					idx95 := int(float64(len(allLatencies))*0.95+0.99) - 1
+					if idx95 < 0 {
+						idx95 = 0
+					} else if idx95 >= len(allLatencies) {
+						idx95 = len(allLatencies) - 1
+					}
+					p95 = allLatencies[idx95]
 				}
 			}
 		}
@@ -615,10 +637,49 @@ func (c *Controller) TeardownWorkers(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
+	// 全ワーカーの情報を削除
+	c.workers.Clear()
+
 	return connect.NewResponse(&swarunv1.TeardownWorkersResponse{
 		Success: true,
 		Message: "Successfully teared down all workers",
 	}), nil
+}
+
+func (c *Controller) TeardownWorker(
+	ctx context.Context,
+	req *connect.Request[swarunv1.TeardownWorkerRequest],
+) (*connect.Response[swarunv1.TeardownWorkerResponse], error) {
+	workerID := req.Msg.GetWorkerId()
+	if workerID == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("worker_id is required"))
+	}
+
+	// オーケストレーターで停止処理
+	if err := c.orchestrator.TeardownWorker(ctx, workerID); err != nil {
+		c.logger.Warn("Failed to teardown worker in orchestrator", "worker_id", workerID, "error", err)
+		// オーケストレーターで見つからなくても、メモリ上のリストから消すことは試みる
+	}
+
+	// メモリ上のワーカーリストから削除
+	// c.workers は atomicmap.Map[string, *Worker] で、Delete メソッドがあるか確認が必要
+	// atomic_map.go を見ると Delete がないかもしれない
+	c.removeWorker(workerID)
+
+	return connect.NewResponse(&swarunv1.TeardownWorkerResponse{
+		Success: true,
+		Message: fmt.Sprintf("Successfully teared down worker %s", workerID),
+	}), nil
+}
+
+func (c *Controller) removeWorker(id string) {
+	m := c.workers.Load()
+	if _, ok := m[id]; !ok {
+		return
+	}
+	newMap := maps.Clone(m)
+	delete(newMap, id)
+	c.workers.Swap(newMap)
 }
 
 func (c *Controller) StopTest(
@@ -672,12 +733,45 @@ func (c *Controller) ListTestRuns(
 	ctx context.Context,
 	_ *connect.Request[swarunv1.ListTestRunsRequest],
 ) (*connect.Response[swarunv1.ListTestRunsResponse], error) {
-	ids := slices.Collect(maps.Keys(c.testRuns.Load()))
+	testRuns := c.testRuns.Load()
+	ids := slices.Collect(maps.Keys(testRuns))
 	slices.Sort(ids)
 	slices.Reverse(ids) // 新しい順に表示
 
+	summaries := make([]*swarunv1.TestRunSummary, 0, len(ids))
+	for _, id := range ids {
+		tr, ok := testRuns[id]
+		if !ok {
+			continue
+		}
+
+		var rps float64
+		var avgLatency float64
+		duration := time.Since(tr.StartTime)
+		if !tr.IsRunning {
+			duration = tr.EndTime.Sub(tr.StartTime)
+		}
+
+		if duration > 0 {
+			rps = float64(tr.TotalSuccess) / duration.Seconds()
+		}
+		if tr.LatencyCount > 0 {
+			avgLatency = float64(tr.TotalLatency.Milliseconds()) / float64(tr.LatencyCount)
+		}
+
+		summaries = append(summaries, &swarunv1.TestRunSummary{
+			TestRunId:    id,
+			StartTime:    timestamppb.New(tr.StartTime),
+			IsRunning:    tr.IsRunning,
+			Concurrency:  tr.Concurrency,
+			WorkerCount:  tr.WorkerCount,
+			Rps:          rps,
+			AvgLatencyMs: avgLatency,
+		})
+	}
+
 	return connect.NewResponse(&swarunv1.ListTestRunsResponse{
-		TestRunIds: ids,
+		TestRuns: summaries,
 	}), nil
 }
 
@@ -808,13 +902,22 @@ func (c *Controller) sendMetrics(
 
 				if m.GetName() == "test_finished" {
 					finishedCount := atomic.AddInt32(&tr.FinishedWorkerCount, 1)
+					c.logger.Info("Received test_finished", "test_run_id", testRunID, "worker_id", batch.GetWorkerId(), "finished_count", finishedCount, "total_workers", tr.WorkerCount)
 					if finishedCount >= tr.WorkerCount {
-						tr.IsRunning = false
-						tr.EndTime = time.Now()
-						c.logger.Info("Test run finished", "test_run_id", testRunID, "success", tr.TotalSuccess, "failure", tr.TotalFailure, "end_time", tr.EndTime)
-						if err := c.saveTestRuns(); err != nil {
-							c.logger.Error("Failed to save test runs on finish", "error", err)
-						}
+						// 全ワーカーの終了通知を受信
+						// メトリクス送信の最終バッチがストレージに書き込まれるのを確実にするため、
+						// 少し猶予を持たせてから Running 状態を false にする
+						go func(targetID string) {
+							time.Sleep(2 * time.Second)
+							if tr, ok := c.testRuns.Get(targetID); ok {
+								tr.IsRunning = false
+								tr.EndTime = time.Now()
+								c.logger.Info("Test run finished", "test_run_id", targetID, "success", tr.TotalSuccess, "failure", tr.TotalFailure, "end_time", tr.EndTime)
+								if err := c.saveTestRuns(); err != nil {
+									c.logger.Error("Failed to save test runs on finish", "error", err)
+								}
+							}
+						}(testRunID)
 					}
 				}
 			}

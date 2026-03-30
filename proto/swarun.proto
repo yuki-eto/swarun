@@ -43,6 +43,9 @@ service ControllerService {
   // TeardownWorkers は起動した全ワーカーノードを停止・削除します。
   rpc TeardownWorkers(TeardownWorkersRequest) returns (TeardownWorkersResponse);
 
+  // TeardownWorker は特定のワーカーノードを停止・削除します。
+  rpc TeardownWorker(TeardownWorkerRequest) returns (TeardownWorkerResponse);
+
   // StopTest は実行中のテストを停止します（全ワーカーに停止を通知）。
   rpc StopTest(StopTestRequest) returns (StopTestResponse);
 
@@ -77,10 +80,29 @@ message TeardownWorkersResponse {
   string message = 2;
 }
 
+message TeardownWorkerRequest {
+  string worker_id = 1;
+}
+
+message TeardownWorkerResponse {
+  bool success = 1;
+  string message = 2;
+}
+
 message ListTestRunsRequest {}
 
 message ListTestRunsResponse {
-  repeated string test_run_ids = 1;
+  repeated TestRunSummary test_runs = 1;
+}
+
+message TestRunSummary {
+  string test_run_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  bool is_running = 3;
+  int32 concurrency = 4;
+  int32 worker_count = 5;
+  double rps = 6;
+  double avg_latency_ms = 7;
 }
 
 message ExportReportRequest {

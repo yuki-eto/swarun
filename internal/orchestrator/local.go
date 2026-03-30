@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/google/uuid"
 	swarunv1 "github.com/yuki-eto/swarun/gen/proto/v1"
 )
 
@@ -16,7 +17,8 @@ func (o *Orchestrator) provisionLocal(ctx context.Context, mode *swarunv1.LocalM
 		return nil, fmt.Errorf("failed to get executable path: %w", err)
 	}
 	for i := range int(count) {
-		id := fmt.Sprintf("local-worker-%d", len(o.localProcesses)+1)
+		shortUUID := uuid.New().String()[:8]
+		id := fmt.Sprintf("local-worker-%s", shortUUID)
 		cmd := exec.Command(executable,
 			"-mode", "worker",
 			"-id", id,
@@ -26,7 +28,7 @@ func (o *Orchestrator) provisionLocal(ctx context.Context, mode *swarunv1.LocalM
 		if err := cmd.Start(); err != nil {
 			return ids, fmt.Errorf("failed to start local worker %d: %w", i, err)
 		}
-		o.localProcesses = append(o.localProcesses, cmd.Process)
+		o.localProcesses[id] = cmd.Process
 		ids = append(ids, id)
 		o.logger.Info("Provisioned local worker", "id", id, "pid", cmd.Process.Pid)
 	}

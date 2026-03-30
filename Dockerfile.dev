@@ -1,0 +1,24 @@
+FROM golang:1.25
+
+# air のインストール
+RUN go install github.com/air-verse/air@latest
+
+# DuckDB などのビルドに必要な依存関係
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libc6-dev \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 依存関係のキャッシュ
+COPY go.mod go.sum ./
+RUN go mod download
+
+# ソースコードのコピー
+COPY . .
+
+# air をエントリーポイントにする
+CMD ["air", "-c", ".air.toml"]

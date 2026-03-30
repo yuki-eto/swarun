@@ -62,9 +62,20 @@ func (c *Client) ProvisionWorkers(ctx context.Context, req *swarunv1.ProvisionWo
 	return resp.Msg, nil
 }
 
-// TeardownWorkers はワーカーを停止・削除します。
+// TeardownWorkers は全ワーカーを停止・削除します。
 func (c *Client) TeardownWorkers(ctx context.Context) (*swarunv1.TeardownWorkersResponse, error) {
 	resp, err := c.inner.TeardownWorkers(ctx, connect.NewRequest(&swarunv1.TeardownWorkersRequest{}))
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg, nil
+}
+
+// TeardownWorker は特定のワーカーを停止・削除します。
+func (c *Client) TeardownWorker(ctx context.Context, workerID string) (*swarunv1.TeardownWorkerResponse, error) {
+	resp, err := c.inner.TeardownWorker(ctx, connect.NewRequest(&swarunv1.TeardownWorkerRequest{
+		WorkerId: workerID,
+	}))
 	if err != nil {
 		return nil, err
 	}

@@ -42,6 +42,7 @@ type Config struct {
 	InfluxDBOrg    string `yaml:"influxdb_org"`
 	InfluxDBBucket string `yaml:"influxdb_bucket"`
 	Platform       string `yaml:"platform"` // "local", "docker", "ecs" など
+	Timezone       string `yaml:"timezone"` // 例: "Asia/Tokyo"
 }
 
 // DefaultConfig はデフォルトの設定を返します。
@@ -58,6 +59,7 @@ func DefaultConfig() *Config {
 		Concurrency:    1,
 		MetricsBackend: "duckdb",
 		Platform:       "local",
+		Timezone:       "Local",
 	}
 }
 
@@ -196,5 +198,8 @@ func LoadEnv(cfg *Config) {
 	}
 	if v := os.Getenv("SWARUN_INFLUXDB_BUCKET"); v != "" {
 		cfg.InfluxDBBucket = v
+	}
+	if v := os.Getenv("SWARUN_TIMEZONE"); v != "" {
+		cfg.Timezone = v
 	}
 }

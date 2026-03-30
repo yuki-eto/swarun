@@ -2,7 +2,10 @@ package swarun
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptrace"
 	"os"
@@ -12,6 +15,7 @@ import (
 	"connectrpc.com/connect"
 	swarunv1 "github.com/yuki-eto/swarun/gen/proto/v1"
 	"github.com/yuki-eto/swarun/gen/proto/v1/swarunv1connect"
+	"golang.org/x/net/http2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -29,6 +33,17 @@ var (
 	// It's initialized on first send.
 	stream *connect.ClientStreamForClient[swarunv1.MetricBatch, swarunv1.SendMetricsResponse]
 	mu     sync.Mutex
+
+	// httpClient is the custom HTTP client with Keepalive settings.
+	httpClient *http.Client
+
+	metricQueue chan *swarunv1.MetricBatch
+	wg          sync.WaitGroup
+	done        chan struct{}
+)
+
+const (
+	queueSize = 1000
 )
 
 func initEnv() {
@@ -37,13 +52,68 @@ func initEnv() {
 		testRunID = os.Getenv("SWARUN_TEST_RUN_ID")
 		controllerAddr = os.Getenv("SWARUN_CONTROLLER_ADDR")
 
+		metricQueue = make(chan *swarunv1.MetricBatch, queueSize)
+		done = make(chan struct{})
+
 		if controllerAddr != "" {
+			// Configure HTTP/2 transport with Keepalive settings
+			transport := &http2.Transport{
+				AllowHTTP: true,
+				DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+					return net.Dial(network, addr)
+				},
+				ReadIdleTimeout:  15 * time.Second,
+				PingTimeout:      15 * time.Second,
+				WriteByteTimeout: 15 * time.Second,
+			}
+
+			httpClient = &http.Client{
+				Transport: transport,
+			}
+
 			client = swarunv1connect.NewControllerServiceClient(
-				http.DefaultClient,
+				httpClient,
 				controllerAddr,
 			)
+
+			go asyncSender()
 		}
 	})
+}
+
+func asyncSender() {
+	for batch := range metricQueue {
+		sendWithRetry(batch)
+		wg.Done()
+	}
+	close(done)
+}
+
+func sendWithRetry(batch *swarunv1.MetricBatch) {
+	backoff := 100 * time.Millisecond
+	maxBackoff := 5 * time.Second
+
+	for {
+		ctx := context.Background()
+		s, err := getStream(ctx)
+		if err != nil || s == nil {
+			time.Sleep(backoff)
+			backoff = min(backoff*2, maxBackoff)
+			continue
+		}
+
+		if err := s.Send(batch); err != nil {
+			slog.Error("Failed to send metrics in asyncSender, retrying...", "error", err, "workerID", batch.WorkerId)
+			mu.Lock()
+			stream = nil
+			mu.Unlock()
+
+			time.Sleep(backoff)
+			backoff = min(backoff*2, maxBackoff)
+			continue
+		}
+		return
+	}
 }
 
 func getStream(ctx context.Context) (*connect.ClientStreamForClient[swarunv1.MetricBatch, swarunv1.SendMetricsResponse], error) {
@@ -81,10 +151,9 @@ func GetTestRunID() string {
 }
 
 func ReportMetrics(label string, metrics map[string]float64) {
-	ctx := context.Background()
-	s, err := getStream(ctx)
+	initEnv()
 	trID := GetTestRunID()
-	if err != nil || s == nil || workerID == "" || trID == "" {
+	if workerID == "" || trID == "" {
 		return
 	}
 
@@ -104,19 +173,26 @@ func ReportMetrics(label string, metrics map[string]float64) {
 		})
 	}
 
-	_ = s.Send(&swarunv1.MetricBatch{
+	batch := &swarunv1.MetricBatch{
 		WorkerId:  workerID,
 		TestRunId: trID,
 		Timestamp: timestamppb.Now(),
 		Metrics:   metricEntries,
-	})
+	}
+
+	wg.Add(1)
+	select {
+	case metricQueue <- batch:
+	default:
+		slog.Warn("Metric queue is full, dropping metric", "label", label)
+		wg.Done()
+	}
 }
 
 func ReportLatencies(label string, metrics map[string]time.Duration) {
-	ctx := context.Background()
-	s, err := getStream(ctx)
+	initEnv()
 	trID := GetTestRunID()
-	if err != nil || s == nil || workerID == "" || trID == "" {
+	if workerID == "" || trID == "" {
 		return
 	}
 
@@ -136,19 +212,26 @@ func ReportLatencies(label string, metrics map[string]time.Duration) {
 		})
 	}
 
-	_ = s.Send(&swarunv1.MetricBatch{
+	batch := &swarunv1.MetricBatch{
 		WorkerId:  workerID,
 		TestRunId: trID,
 		Timestamp: timestamppb.Now(),
 		Metrics:   metricEntries,
-	})
+	}
+
+	wg.Add(1)
+	select {
+	case metricQueue <- batch:
+	default:
+		slog.Warn("Metric queue is full, dropping metric", "label", label)
+		wg.Done()
+	}
 }
 
 func ReportCustom(name string, value float64, labels map[string]string) {
-	ctx := context.Background()
-	s, err := getStream(ctx)
+	initEnv()
 	trID := GetTestRunID()
-	if err != nil || s == nil || workerID == "" || trID == "" {
+	if workerID == "" || trID == "" {
 		return
 	}
 
@@ -159,7 +242,7 @@ func ReportCustom(name string, value float64, labels map[string]string) {
 		labels["path"] = "unknown"
 	}
 
-	_ = s.Send(&swarunv1.MetricBatch{
+	batch := &swarunv1.MetricBatch{
 		WorkerId:  workerID,
 		TestRunId: trID,
 		Timestamp: timestamppb.Now(),
@@ -170,11 +253,27 @@ func ReportCustom(name string, value float64, labels map[string]string) {
 				Labels: labels,
 			},
 		},
-	})
+	}
+
+	wg.Add(1)
+	select {
+	case metricQueue <- batch:
+	default:
+		slog.Warn("Metric queue is full, dropping metric", "metric", name)
+		wg.Done()
+	}
 }
 
-// Flush はストリームを終了します。
+// Flush はキュー内の全てのメトリクスが送信されるのを待機し、ストリームを終了します。
 func Flush(ctx context.Context) error {
+	initEnv()
+	if metricQueue == nil {
+		return nil
+	}
+
+	// Wait for all pending metrics in the queue to be sent
+	wg.Wait()
+
 	mu.Lock()
 	defer mu.Unlock()
 	if stream == nil {
