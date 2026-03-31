@@ -18,6 +18,9 @@ build-go:
 	CGO_ENABLED=1 go build -o tmp/swarun ./cmd/swarun/main.go
 	CGO_ENABLED=1 go build -o tmp/swarun-example ./examples/simple-get/main.go
 
+test-go:
+	go test ./...
+
 docker-compose-up: docker-build docker-create-network
 	docker compose up -d
 

@@ -3,6 +3,7 @@ package dao
 import (
 	"context"
 	"os"
+	"slices"
 	"testing"
 	"time"
 )
@@ -63,7 +64,7 @@ func TestDuckDBDAO(t *testing.T) {
 	})
 
 	t.Run("QueryRaw", func(t *testing.T) {
-		res, err := dao.(*duckDBDAO).QueryRaw(ctx, "SELECT metric, value, labels, path, worker_id FROM metrics ORDER BY timestamp")
+		res, columns, err := dao.(*duckDBDAO).QueryRaw(ctx, "SELECT metric, value, labels, path, worker_id FROM metrics ORDER BY timestamp")
 		if err != nil {
 			t.Fatalf("failed to query raw: %v", err)
 		}
@@ -83,6 +84,12 @@ func TestDuckDBDAO(t *testing.T) {
 		}
 		if m["worker_id"] != "w1" {
 			t.Errorf("expected worker_id w1, got %v", m["worker_id"])
+		}
+		if len(columns) != 5 {
+			t.Errorf("expected 5 columns, got %d", len(columns))
+		}
+		if !slices.Equal(columns, []string{"metric", "value", "labels", "path", "worker_id"}) {
+			t.Errorf("expected columns metric, value, labels, path, worker_id, got %v", columns)
 		}
 	})
 
