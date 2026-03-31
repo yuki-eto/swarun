@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptrace"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	swarunv1 "github.com/yuki-eto/swarun/gen/proto/v1"
 	"github.com/yuki-eto/swarun/gen/proto/v1/swarunv1connect"
 	"golang.org/x/net/http2"
@@ -331,6 +333,16 @@ func (r *sizeTrackingReader) Close() error {
 // リクエスト時間（送信完了まで）とレスポンス時間（受信開始から完了まで）も個別に記録されます。
 // また、レスポンスサイズも計測されます。
 func Do(req *http.Request) (*http.Response, error) {
+	// リクエスト ID の生成 (UUID v7)
+	requestID, err := uuid.NewV7()
+	var reqIDStr string
+	if err != nil {
+		slog.Warn("failed to generate uuid v7, falling back to v4", "error", err)
+		reqIDStr = uuid.New().String()
+	} else {
+		reqIDStr = requestID.String()
+	}
+
 	label := ""
 	if req.URL != nil {
 		label = req.URL.String()
@@ -359,9 +371,16 @@ func Do(req *http.Request) (*http.Response, error) {
 		"latency_ms": float64(totalLatency.Milliseconds()),
 	}
 
+	labels := map[string]string{
+		"path":       label,
+		"request_id": reqIDStr,
+	}
+
 	if err != nil {
 		metrics["failure"] = 1
-		ReportMetrics(label, metrics)
+		for name, val := range metrics {
+			ReportCustom(name, val, labels)
+		}
 		return resp, err
 	}
 
@@ -391,12 +410,15 @@ func Do(req *http.Request) (*http.Response, error) {
 		resp.Body = &sizeTrackingReader{
 			ReadCloser: resp.Body,
 			onClose: func(size int64) {
-				ReportCustom("response_size_bytes", float64(size), map[string]string{"path": label})
+				labelsCopy := maps.Clone(labels)
+				ReportCustom("response_size_bytes", float64(size), labelsCopy)
 			},
 		}
 	}
 
-	ReportMetrics(label, metrics)
+	for name, val := range metrics {
+		ReportCustom(name, val, labels)
+	}
 
 	return resp, nil
 }

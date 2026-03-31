@@ -17,8 +17,11 @@ func (o *Orchestrator) provisionLocal(ctx context.Context, mode *swarunv1.LocalM
 		return nil, fmt.Errorf("failed to get executable path: %w", err)
 	}
 	for i := range int(count) {
-		shortUUID := uuid.New().String()[:8]
-		id := fmt.Sprintf("local-worker-%s", shortUUID)
+		u, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate worker uuid: %w", err)
+		}
+		id := fmt.Sprintf("local-worker-%s", u.String())
 		cmd := exec.Command(executable,
 			"-mode", "worker",
 			"-id", id,

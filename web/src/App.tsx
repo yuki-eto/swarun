@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
+import Query from "./pages/Query";
 import Results from "./pages/Results";
 import TestRunDetail from "./pages/TestRunDetail";
 
@@ -10,6 +11,7 @@ function App() {
 			<Route path="/" element={<Layout />}>
 				<Route index element={<Dashboard />} />
 				<Route path="results" element={<Results />} />
+				<Route path="query" element={<Query />} />
 				<Route path="runs/:id" element={<TestRunDetail />} />
 			</Route>
 		</Routes>

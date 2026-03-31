@@ -12,6 +12,7 @@ type Row struct {
 	Value     float64
 	WorkerID  string            // 追加
 	Path      string            // 追加
+	RequestID string            // 追加
 	Labels    map[string]string // その他のカスタムラベル
 }
 

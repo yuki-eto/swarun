@@ -90,6 +90,9 @@ func (d *influxDBDAO) InsertRows(ctx context.Context, rows []Row) error {
 		if r.Path != "" {
 			labels["path"] = r.Path
 		}
+		if r.RequestID != "" {
+			labels["request_id"] = r.RequestID
+		}
 
 		p := influxdb2.NewPoint(
 			r.Metric,
@@ -163,12 +166,13 @@ func (d *influxDBDAO) SelectRows(ctx context.Context, metric string, labels map[
 			Value:     val,
 			WorkerID:  fmt.Sprintf("%v", r.ValueByKey("worker_id")),
 			Path:      fmt.Sprintf("%v", r.ValueByKey("path")),
+			RequestID: fmt.Sprintf("%v", r.ValueByKey("request_id")),
 			Labels:    make(map[string]string),
 		}
 
 		// その他のラベルを詰め直す
 		for k, v := range r.Values() {
-			if k != "worker_id" && k != "path" && !strings.HasPrefix(k, "_") && k != "test_run_id" {
+			if k != "worker_id" && k != "path" && k != "request_id" && !strings.HasPrefix(k, "_") && k != "test_run_id" {
 				row.Labels[k] = fmt.Sprintf("%v", v)
 			}
 		}

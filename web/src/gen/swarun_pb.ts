@@ -4,7 +4,7 @@
 // @ts-nocheck
 
 import type { BinaryReadOptions, FieldList, JsonReadOptions, JsonValue, PartialMessage, PlainMessage } from "@bufbuild/protobuf";
-import { Duration, Message, proto3, protoInt64, Timestamp } from "@bufbuild/protobuf";
+import { Duration, Message, proto3, protoInt64, Struct, Timestamp } from "@bufbuild/protobuf";
 
 /**
  * @generated from message swarun.v1.TeardownWorkersRequest
@@ -766,13 +766,6 @@ export class RunTestRequest extends Message<RunTestRequest> {
    */
   testConfig?: StartTestRequest;
 
-  /**
-   * 空の場合は全ワーカーを対象とする
-   *
-   * @generated from field: repeated string worker_ids = 2;
-   */
-  workerIds: string[] = [];
-
   constructor(data?: PartialMessage<RunTestRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -782,7 +775,6 @@ export class RunTestRequest extends Message<RunTestRequest> {
   static readonly typeName = "swarun.v1.RunTestRequest";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
     { no: 1, name: "test_config", kind: "message", T: StartTestRequest },
-    { no: 2, name: "worker_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): RunTestRequest {
@@ -2177,6 +2169,123 @@ export class ImportDataResponse extends Message<ImportDataResponse> {
 
   static equals(a: ImportDataResponse | PlainMessage<ImportDataResponse> | undefined, b: ImportDataResponse | PlainMessage<ImportDataResponse> | undefined): boolean {
     return proto3.util.equals(ImportDataResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message swarun.v1.QueryMetricsRequest
+ */
+export class QueryMetricsRequest extends Message<QueryMetricsRequest> {
+  /**
+   * @generated from field: string test_run_id = 1;
+   */
+  testRunId = "";
+
+  /**
+   * @generated from field: string query = 2;
+   */
+  query = "";
+
+  constructor(data?: PartialMessage<QueryMetricsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "swarun.v1.QueryMetricsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "test_run_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "query", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): QueryMetricsRequest {
+    return new QueryMetricsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): QueryMetricsRequest {
+    return new QueryMetricsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): QueryMetricsRequest {
+    return new QueryMetricsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: QueryMetricsRequest | PlainMessage<QueryMetricsRequest> | undefined, b: QueryMetricsRequest | PlainMessage<QueryMetricsRequest> | undefined): boolean {
+    return proto3.util.equals(QueryMetricsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message swarun.v1.QueryMetricsResponse
+ */
+export class QueryMetricsResponse extends Message<QueryMetricsResponse> {
+  /**
+   * @generated from field: repeated swarun.v1.QueryResultRow rows = 1;
+   */
+  rows: QueryResultRow[] = [];
+
+  constructor(data?: PartialMessage<QueryMetricsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "swarun.v1.QueryMetricsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "rows", kind: "message", T: QueryResultRow, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): QueryMetricsResponse {
+    return new QueryMetricsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): QueryMetricsResponse {
+    return new QueryMetricsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): QueryMetricsResponse {
+    return new QueryMetricsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: QueryMetricsResponse | PlainMessage<QueryMetricsResponse> | undefined, b: QueryMetricsResponse | PlainMessage<QueryMetricsResponse> | undefined): boolean {
+    return proto3.util.equals(QueryMetricsResponse, a, b);
+  }
+}
+
+/**
+ * @generated from message swarun.v1.QueryResultRow
+ */
+export class QueryResultRow extends Message<QueryResultRow> {
+  /**
+   * @generated from field: google.protobuf.Struct columns = 1;
+   */
+  columns?: Struct;
+
+  constructor(data?: PartialMessage<QueryResultRow>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "swarun.v1.QueryResultRow";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "columns", kind: "message", T: Struct },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): QueryResultRow {
+    return new QueryResultRow().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): QueryResultRow {
+    return new QueryResultRow().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): QueryResultRow {
+    return new QueryResultRow().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: QueryResultRow | PlainMessage<QueryResultRow> | undefined, b: QueryResultRow | PlainMessage<QueryResultRow> | undefined): boolean {
+    return proto3.util.equals(QueryResultRow, a, b);
   }
 }
 

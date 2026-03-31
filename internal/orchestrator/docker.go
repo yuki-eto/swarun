@@ -20,8 +20,11 @@ func (o *Orchestrator) provisionDocker(ctx context.Context, mode *swarunv1.Docke
 
 	var ids []string
 	for i := range int(count) {
-		shortUUID := uuid.New().String()[:8]
-		id := fmt.Sprintf("docker-worker-%s", shortUUID)
+		u, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate worker uuid: %w", err)
+		}
+		id := fmt.Sprintf("docker-worker-%s", u.String())
 
 		// Docker ネットワーク内で実行されている場合を考慮し、デフォルトのコントローラーアドレスを調整
 		addr := controllerAddr

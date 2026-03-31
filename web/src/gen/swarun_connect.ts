@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ExportDataRequest, ExportDataResponse, ExportReportRequest, ExportReportResponse, ExportToS3Request, ExportToS3Response, GetMetricsRequest, GetMetricsResponse, GetTestStatusRequest, GetTestStatusResponse, HeartbeatRequest, HeartbeatResponse, ImportDataRequest, ImportDataResponse, ImportFromS3Request, ImportFromS3Response, ListTestRunsRequest, ListTestRunsResponse, ListWorkersRequest, ListWorkersResponse, MetricBatch, ProvisionWorkersRequest, ProvisionWorkersResponse, RegisterWorkerRequest, RegisterWorkerResponse, RunTestRequest, RunTestResponse, SendMetricsResponse, StartTestRequest, StartTestResponse, StopTestRequest, StopTestResponse, TeardownWorkerRequest, TeardownWorkerResponse, TeardownWorkersRequest, TeardownWorkersResponse } from "./swarun_pb.js";
+import { ExportDataRequest, ExportDataResponse, ExportReportRequest, ExportReportResponse, ExportToS3Request, ExportToS3Response, GetMetricsRequest, GetMetricsResponse, GetTestStatusRequest, GetTestStatusResponse, HeartbeatRequest, HeartbeatResponse, ImportDataRequest, ImportDataResponse, ImportFromS3Request, ImportFromS3Response, ListTestRunsRequest, ListTestRunsResponse, ListWorkersRequest, ListWorkersResponse, MetricBatch, ProvisionWorkersRequest, ProvisionWorkersResponse, QueryMetricsRequest, QueryMetricsResponse, RegisterWorkerRequest, RegisterWorkerResponse, RunTestRequest, RunTestResponse, SendMetricsResponse, StartTestRequest, StartTestResponse, StopTestRequest, StopTestResponse, TeardownWorkerRequest, TeardownWorkerResponse, TeardownWorkersRequest, TeardownWorkersResponse } from "./swarun_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -201,6 +201,17 @@ export const ControllerService = {
       I: ImportDataRequest,
       O: ImportDataResponse,
       kind: MethodKind.ClientStreaming,
+    },
+    /**
+     * QueryMetrics は指定された test_run_id の DuckDB に対してクエリを発行します。
+     *
+     * @generated from rpc swarun.v1.ControllerService.QueryMetrics
+     */
+    queryMetrics: {
+      name: "QueryMetrics",
+      I: QueryMetricsRequest,
+      O: QueryMetricsResponse,
+      kind: MethodKind.Unary,
     },
   }
 } as const;

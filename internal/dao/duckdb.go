@@ -51,10 +51,12 @@ func NewDuckDBDAO(dataDir, testRunID string) (MetricsDAO, error) {
 			value DOUBLE,
 			path TEXT,
 			worker_id TEXT,
+			request_id TEXT,
 			labels JSON
 		);
 		CREATE INDEX IF NOT EXISTS idx_path ON metrics (path);
 		CREATE INDEX IF NOT EXISTS idx_worker_id ON metrics (worker_id);
+		CREATE INDEX IF NOT EXISTS idx_request_id ON metrics (request_id);
 		CREATE INDEX IF NOT EXISTS idx_timestamp ON metrics (timestamp);
 		CREATE INDEX IF NOT EXISTS idx_metric ON metrics (metric);
 	`)
@@ -76,7 +78,7 @@ func (d *duckDBDAO) InsertRows(ctx context.Context, rows []Row) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, "INSERT INTO metrics (timestamp, metric, value, path, worker_id, labels) VALUES (?, ?, ?, ?, ?, ?)")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO metrics (timestamp, metric, value, path, worker_id, request_id, labels) VALUES (?, ?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -87,7 +89,7 @@ func (d *duckDBDAO) InsertRows(ctx context.Context, rows []Row) error {
 		if err != nil {
 			return err
 		}
-		if _, err := stmt.ExecContext(ctx, r.Timestamp, r.Metric, r.Value, r.Path, r.WorkerID, string(labelsJSON)); err != nil {
+		if _, err := stmt.ExecContext(ctx, r.Timestamp, r.Metric, r.Value, r.Path, r.WorkerID, r.RequestID, string(labelsJSON)); err != nil {
 			return err
 		}
 	}
@@ -128,6 +130,9 @@ func (d *duckDBDAO) SelectRows(ctx context.Context, metric string, labels map[st
 			} else if k == "worker_id" {
 				query += " AND worker_id = ?"
 				args = append(args, v)
+			} else if k == "request_id" {
+				query += " AND request_id = ?"
+				args = append(args, v)
 			} else {
 				query += " AND json_extract_path_text(labels, ?) = ?"
 				args = append(args, "/"+k, v)
@@ -137,7 +142,7 @@ func (d *duckDBDAO) SelectRows(ctx context.Context, metric string, labels map[st
 		query += " GROUP BY bucket ORDER BY bucket"
 	} else {
 		// 生データの取得
-		query = "SELECT timestamp, value, labels FROM metrics WHERE metric = ? AND timestamp >= ? AND timestamp <= ?"
+		query = "SELECT timestamp, value, path, worker_id, request_id, labels FROM metrics WHERE metric = ? AND timestamp >= ? AND timestamp <= ?"
 		args = append(args, metric, start, end)
 
 		if labels == nil {
@@ -149,6 +154,9 @@ func (d *duckDBDAO) SelectRows(ctx context.Context, metric string, labels map[st
 				args = append(args, v)
 			} else if k == "worker_id" {
 				query += " AND worker_id = ?"
+				args = append(args, v)
+			} else if k == "request_id" {
+				query += " AND request_id = ?"
 				args = append(args, v)
 			} else {
 				query += " AND json_extract_path_text(labels, ?) = ?"
@@ -174,7 +182,7 @@ func (d *duckDBDAO) SelectRows(ctx context.Context, metric string, labels map[st
 			}
 		} else {
 			var labelsVal any
-			if err := rows.Scan(&r.Timestamp, &r.Value, &labelsVal); err != nil {
+			if err := rows.Scan(&r.Timestamp, &r.Value, &r.Path, &r.WorkerID, &r.RequestID, &labelsVal); err != nil {
 				return nil, err
 			}
 			if labelsVal == nil {
@@ -227,6 +235,9 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 			overallArgs = append(overallArgs, v)
 		} else if k == "worker_id" {
 			overallQuery += " AND worker_id = ?"
+			overallArgs = append(overallArgs, v)
+		} else if k == "request_id" {
+			overallQuery += " AND request_id = ?"
 			overallArgs = append(overallArgs, v)
 		} else {
 			overallQuery += " AND json_extract_path_text(labels, ?) = ?"
@@ -287,6 +298,9 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 			pathArgs = append(pathArgs, v)
 		} else if k == "worker_id" {
 			pathQuery += " AND worker_id = ?"
+			pathArgs = append(pathArgs, v)
+		} else if k == "request_id" {
+			pathQuery += " AND request_id = ?"
 			pathArgs = append(pathArgs, v)
 		} else {
 			pathQuery += " AND json_extract_path_text(labels, ?) = ?"

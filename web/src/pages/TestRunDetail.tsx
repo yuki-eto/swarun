@@ -27,7 +27,7 @@ import {
 } from "chart.js";
 import { useCallback, useEffect, useState } from "react";
 import { Line } from "react-chartjs-2";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { client } from "../api/client";
 import type { GetTestStatusResponse, MetricData } from "../gen/swarun_pb";
 import "chartjs-adapter-date-fns";
@@ -45,6 +45,7 @@ ChartJS.register(
 
 const TestRunDetail = () => {
 	const { id } = useParams<{ id: string }>();
+	const navigate = useNavigate();
 	const [status, setStatus] = useState<GetTestStatusResponse | null>(null);
 	const [latencyMetrics, setLatencyMetrics] = useState<MetricData[]>([]);
 	const [rpsMetrics, setRpsMetrics] = useState<MetricData[]>([]);
@@ -325,6 +326,12 @@ const TestRunDetail = () => {
 			>
 				<Typography variant="h4">Test Run Detail</Typography>
 				<Box sx={{ display: "flex", gap: 2 }}>
+					<Button
+						variant="outlined"
+						onClick={() => navigate(`/query?testRunId=${id}`)}
+					>
+						Query Metrics
+					</Button>
 					<Button
 						variant="outlined"
 						onClick={handleExport}

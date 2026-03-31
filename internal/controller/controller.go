@@ -272,7 +272,11 @@ func (c *Controller) RunTest(
 	// テストIDが指定されていない、または "random" の場合はランダムな文字列を生成
 	testRunID := testConfig.GetTestRunId()
 	if testRunID == "" || testRunID == "random" {
-		testRunID = uuid.New().String()
+		id, err := uuid.NewV7()
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to generate test run id: %w", err))
+		}
+		testRunID = id.String()
 		testConfig.TestRunId = testRunID
 	}
 
@@ -923,6 +927,9 @@ func (c *Controller) sendMetrics(
 				Labels:    labels,
 				Timestamp: ts,
 				Value:     m.GetValue(),
+				WorkerID:  batch.GetWorkerId(),
+				Path:      m.GetLabels()["path"],
+				RequestID: m.GetLabels()["request_id"],
 			})
 
 			c.logger.Debug("Metric received and queued for storage",
@@ -1228,6 +1235,12 @@ func (c *Controller) QueryMetrics(ctx context.Context, req *connect.Request[swar
 	rawRows, err := storage.QueryRaw(ctx, query)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query failed: %w", err))
+	}
+
+	// 1000件に制限
+	const maxRows = 1000
+	if len(rawRows) > maxRows {
+		rawRows = rawRows[:maxRows]
 	}
 
 	var respRows []*swarunv1.QueryResultRow

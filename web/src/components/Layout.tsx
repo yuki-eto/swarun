@@ -2,6 +2,7 @@ import {
 	Assignment as AssignmentIcon,
 	Dashboard as DashboardIcon,
 	Menu as MenuIcon,
+	Search as SearchIcon,
 } from "@mui/icons-material";
 import {
 	AppBar,
@@ -54,6 +55,14 @@ const Layout = () => {
 							<AssignmentIcon />
 						</ListItemIcon>
 						<ListItemText primary="Results" />
+					</ListItemButton>
+				</ListItem>
+				<ListItem disablePadding>
+					<ListItemButton onClick={() => navigate("/query")}>
+						<ListItemIcon>
+							<SearchIcon />
+						</ListItemIcon>
+						<ListItemText primary="Metrics Query" />
 					</ListItemButton>
 				</ListItem>
 			</List>
