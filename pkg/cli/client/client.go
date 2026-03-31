@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	swarunv1 "github.com/yuki-eto/swarun/gen/proto/v1"
+	"github.com/yuki-eto/swarun/pkg/cli"
 	"github.com/yuki-eto/swarun/pkg/client"
 	"github.com/yuki-eto/swarun/pkg/config"
 	"github.com/yuki-eto/swarun/pkg/logging"
@@ -58,29 +58,7 @@ func Run(args ClientArgs, logger *slog.Logger) {
 
 	switch args.Command {
 	case "run-test":
-		var stages []*swarunv1.RampingStage
-		if args.Stages != "" {
-			parts := strings.Split(args.Stages, ",")
-			for _, p := range parts {
-				kv := strings.SplitN(p, ":", 2)
-				if len(kv) == 2 {
-					target, err := strconv.Atoi(kv[0])
-					if err != nil {
-						logger.Error("Failed to parse stage target", "stage", p, "error", err)
-						os.Exit(1)
-					}
-					dur, err := time.ParseDuration(kv[1])
-					if err != nil {
-						logger.Error("Failed to parse stage duration", "stage", p, "error", err)
-						os.Exit(1)
-					}
-					stages = append(stages, &swarunv1.RampingStage{
-						Target:   int32(target),
-						Duration: durationpb.New(dur),
-					})
-				}
-			}
-		}
+		stages := cli.ParseStages(args.Stages, logger)
 
 		resp, err := c.RunTest(ctx, &swarunv1.RunTestRequest{
 			TestConfig: &swarunv1.StartTestRequest{
@@ -148,35 +126,11 @@ func Run(args ClientArgs, logger *slog.Logger) {
 			if err != nil {
 				logger.Error("Failed to get test status", logging.ErrorAttr(err))
 			} else {
-				msg := resp
-				elapsed := time.Since(msg.GetStartTime().AsTime()).Round(time.Second)
-				fmt.Printf("\r%-10s %-10d %-10d %-10.2f %-10d %-10.2f ms   ",
-					elapsed,
-					msg.GetConcurrency(),
-					msg.GetWorkerCount(),
-					msg.GetRps(),
-					msg.GetTotalSuccess(),
-					msg.GetAvgLatencyMs(),
-				)
+				cli.PrintTestProgress(resp)
 
-				if !msg.GetIsRunning() {
+				if !resp.GetIsRunning() {
 					fmt.Println("\n\nTest completed.")
-					fmt.Println("\n==================== Test Summary ====================")
-					fmt.Printf("%-20s: %s\n", "Test Run ID", msg.GetTestRunId())
-					fmt.Printf("%-20s: %d\n", "Total Success", msg.GetTotalSuccess())
-					fmt.Printf("%-20s: %d\n", "Total Failure", msg.GetTotalFailure())
-					fmt.Printf("%-20s: %.2f ms\n", "Avg Latency", msg.GetAvgLatencyMs())
-					fmt.Printf("%-20s: %.2f ms\n", "Max Latency", msg.GetMaxLatencyMs())
-					fmt.Printf("%-20s: %.2f ms\n", "Min Latency", msg.GetMinLatencyMs())
-					fmt.Printf("%-20s: %.2f ms\n", "90%% Latency", msg.GetP90LatencyMs())
-					fmt.Printf("%-20s: %.2f ms\n", "95%% Latency", msg.GetP95LatencyMs())
-					fmt.Printf("%-20s: %.2f req/s\n", "RPS", msg.GetRps())
-					fmt.Printf("%-20s: %d\n", "Concurrency", msg.GetConcurrency())
-					fmt.Printf("%-20s: %d\n", "Workers", msg.GetWorkerCount())
-					if !msg.GetEndTime().AsTime().IsZero() {
-						fmt.Printf("%-20s: %s\n", "End Time", msg.GetEndTime().AsTime().Format(time.RFC3339))
-					}
-					fmt.Println("======================================================")
+					cli.PrintTestSummary(resp)
 					return
 				}
 			}

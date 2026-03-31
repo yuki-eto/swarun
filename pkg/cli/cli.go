@@ -27,6 +27,208 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
+// PrintTestProgress はテスト実行中の進捗状況を表示します。
+func PrintTestProgress(status *swarunv1.GetTestStatusResponse) {
+	elapsed := time.Since(status.GetStartTime().AsTime()).Round(time.Second)
+	fmt.Printf("\r%-10s %-10d %-10d %-10.2f %-10d %-10.2f ms   ",
+		elapsed,
+		status.GetConcurrency(),
+		status.GetWorkerCount(),
+		status.GetRps(),
+		status.GetTotalSuccess(),
+		status.GetAvgLatencyMs(),
+	)
+}
+
+// PrintTestSummary はテスト実行結果のサマリーを表示します。
+func PrintTestSummary(status *swarunv1.GetTestStatusResponse) {
+	fmt.Println("\n==================== Test Summary ====================")
+	fmt.Printf("%-20s: %s\n", "Test Run ID", status.GetTestRunId())
+	if status.GetDuration() != nil {
+		fmt.Printf("%-20s: %s\n", "Duration", status.GetDuration().AsDuration().String())
+	}
+	fmt.Printf("%-20s: %d\n", "Total Success", status.GetTotalSuccess())
+	fmt.Printf("%-20s: %d\n", "Total Failure", status.GetTotalFailure())
+	fmt.Printf("%-20s: %.2f ms\n", "Avg Latency", status.GetAvgLatencyMs())
+	fmt.Printf("%-20s: %.2f ms\n", "Max Latency", status.GetMaxLatencyMs())
+	fmt.Printf("%-20s: %.2f ms\n", "Min Latency", status.GetMinLatencyMs())
+	fmt.Printf("%-20s: %.2f ms\n", "90%% Latency", status.GetP90LatencyMs())
+	fmt.Printf("%-20s: %.2f ms\n", "95%% Latency", status.GetP95LatencyMs())
+	fmt.Printf("%-20s: %.2f req/s\n", "RPS", status.GetRps())
+	fmt.Printf("%-20s: %d\n", "Concurrency", status.GetConcurrency())
+	fmt.Printf("%-20s: %d\n", "Workers", status.GetWorkerCount())
+	if !status.GetStartTime().AsTime().IsZero() {
+		fmt.Printf("%-20s: %s\n", "Start Time", status.GetStartTime().AsTime().Format(time.RFC3339))
+	}
+	if !status.GetEndTime().AsTime().IsZero() {
+		fmt.Printf("%-20s: %s\n", "End Time", status.GetEndTime().AsTime().Format(time.RFC3339))
+	}
+
+	// パスごとのメトリクスを表示
+	if status.PathMetrics != nil && len(status.PathMetrics) > 0 {
+		fmt.Println("\n-------------------- Path Metrics --------------------")
+		fmt.Printf("%-30s %10s %10s %10s %10s\n", "Path", "Success", "Failure", "RPS", "Avg Latency")
+		for path, m := range status.PathMetrics {
+			fmt.Printf("%-30s %10d %10d %10.2f %10.2f ms\n",
+				path,
+				m.GetTotalSuccess(),
+				m.GetTotalFailure(),
+				m.GetRps(),
+				m.GetAvgLatencyMs(),
+			)
+		}
+	}
+	fmt.Println("======================================================")
+}
+
+// ParseStages は文字列から RampingStage のリストをパースします。
+func ParseStages(stagesStr string, logger *slog.Logger) []*swarunv1.RampingStage {
+	if stagesStr == "" {
+		return nil
+	}
+	var stages []*swarunv1.RampingStage
+	parts := strings.Split(stagesStr, ",")
+	for _, p := range parts {
+		kv := strings.SplitN(p, ":", 2)
+		if len(kv) == 2 {
+			target, err := strconv.Atoi(kv[0])
+			if err != nil {
+				logger.Error("Failed to parse stage target", "stage", p, "error", err)
+				continue
+			}
+			dur, err := time.ParseDuration(kv[1])
+			if err != nil {
+				logger.Error("Failed to parse stage duration", "stage", p, "error", err)
+				continue
+			}
+			stages = append(stages, &swarunv1.RampingStage{
+				Target:   int32(target),
+				Duration: durationpb.New(dur),
+			})
+		}
+	}
+	return stages
+}
+
+func setupControllerMux(c *controller.Controller, logger *slog.Logger) (*http.ServeMux, string) {
+	mux := http.NewServeMux()
+	path, handler := swarunv1connect.NewControllerServiceHandler(c)
+
+	// Add CORS support
+	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Connect-Protocol-Version, Connect-Timeout-Ms, X-Grpc-Web, X-User-Agent")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		handler.ServeHTTP(w, r)
+	})
+
+	mux.Handle(path, corsHandler)
+
+	// Static files for dashboard
+	distFS, err := fs.Sub(staticFS, "web/dist")
+	if err != nil {
+		logger.Error("Failed to access embedded static files", logging.ErrorAttr(err))
+	} else {
+		fileServer := http.FileServer(http.FS(distFS))
+		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// gRPC パス以外でファイルが存在しない場合は index.html を返す (SPA routing)
+			if !strings.HasPrefix(r.URL.Path, path) {
+				f, err := distFS.Open(strings.TrimPrefix(r.URL.Path, "/"))
+				if err != nil {
+					// ファイルが見つからない場合は index.html を返す
+					r.URL.Path = "/"
+				} else {
+					f.Close()
+				}
+			}
+			fileServer.ServeHTTP(w, r)
+		}))
+	}
+
+	return mux, path
+}
+
+func startServerWithGracefulShutdown(server *http.Server, logger *slog.Logger, componentName string) {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error(fmt.Sprintf("%s server failed", componentName), logging.ErrorAttr(err))
+			os.Exit(1)
+		}
+	}()
+
+	<-stop
+	logger.Info(fmt.Sprintf("Shutting down %s...", strings.ToLower(componentName)))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Error(fmt.Sprintf("%s server shutdown failed", componentName), logging.ErrorAttr(err))
+	}
+}
+
+func registerAndHeartbeat(ctx context.Context, client swarunv1connect.ControllerServiceClient, workerID, hostname, address string, heartbeatInterval time.Duration, logger *slog.Logger) {
+	// Register with controller
+	for {
+		_, err := client.RegisterWorker(ctx, connect.NewRequest(&swarunv1.RegisterWorkerRequest{
+			WorkerId: workerID,
+			Hostname: hostname,
+			Address:  address,
+		}))
+		if err == nil {
+			logger.Info("Worker registered with controller", "worker_id", workerID, "address", address)
+			break
+		}
+		logger.Warn("Failed to register with controller, retrying...", "worker_id", workerID, "error", err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
+	}
+
+	// Heartbeat loop
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
+	failCount := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			resp, err := client.Heartbeat(ctx, connect.NewRequest(&swarunv1.HeartbeatRequest{
+				WorkerId: workerID,
+			}))
+			if err != nil || !resp.Msg.Acknowledged {
+				failCount++
+				if err != nil {
+					logger.Warn("Heartbeat failed", "worker_id", workerID, "error", err, "fail_count", failCount)
+				} else {
+					logger.Warn("Heartbeat rejected by controller", "worker_id", workerID, "fail_count", failCount)
+				}
+
+				if failCount >= 3 {
+					logger.Error("Heartbeat failed 3 consecutive times. Shutting down worker...", "worker_id", workerID)
+					os.Exit(1)
+				}
+			} else {
+				failCount = 0
+			}
+		}
+	}
+}
+
 // RunController はコントローラーモードを実行します。
 func RunController(cfg *config.Config, logger *slog.Logger) {
 	runController(cfg, logger)
@@ -55,47 +257,7 @@ func runController(cfg *config.Config, logger *slog.Logger) {
 	}
 	defer c.Close()
 
-	mux := http.NewServeMux()
-	path, handler := swarunv1connect.NewControllerServiceHandler(c)
-
-	// Add CORS support
-	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Connect-Protocol-Version, Connect-Timeout-Ms, X-Grpc-Web, X-User-Agent")
-		w.Header().Set("Access-Control-Max-Age", "3600")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		handler.ServeHTTP(w, r)
-	})
-
-	mux.Handle(path, corsHandler)
-
-	// Static files for dashboard
-	// The path in staticFS is web/dist because the embed directive is web/dist
-	distFS, err := fs.Sub(staticFS, "web/dist")
-	if err != nil {
-		logger.Error("Failed to access embedded static files", logging.ErrorAttr(err))
-	} else {
-		fileServer := http.FileServer(http.FS(distFS))
-		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// gRPC パス以外でファイルが存在しない場合は index.html を返す (SPA routing)
-			if !strings.HasPrefix(r.URL.Path, path) {
-				f, err := distFS.Open(strings.TrimPrefix(r.URL.Path, "/"))
-				if err != nil {
-					// ファイルが見つからない場合は index.html を返す
-					r.URL.Path = "/"
-				} else {
-					f.Close()
-				}
-			}
-			fileServer.ServeHTTP(w, r)
-		}))
-	}
+	mux, _ := setupControllerMux(c, logger)
 
 	logger.Info("Starting controller", "port", cfg.Port)
 	server := &http.Server{
@@ -109,26 +271,7 @@ func runController(cfg *config.Config, logger *slog.Logger) {
 		IdleTimeout:       2 * time.Minute,
 	}
 
-	// Graceful shutdown
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("Controller server failed", logging.ErrorAttr(err))
-			os.Exit(1)
-		}
-	}()
-
-	<-stop
-	logger.Info("Shutting down controller...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := server.Shutdown(ctx); err != nil {
-		logger.Error("Server shutdown failed", logging.ErrorAttr(err))
-	}
+	startServerWithGracefulShutdown(server, logger, "Controller")
 }
 
 func runWorker(cfg *config.Config, sc swarun.Scenario, logger *slog.Logger) {
@@ -144,48 +287,13 @@ func runWorker(cfg *config.Config, sc swarun.Scenario, logger *slog.Logger) {
 			cfg.ControllerAddr,
 		)
 		address := fmt.Sprintf("http://%s:%d", cfg.WorkerID, cfg.Port)
+		hostname := cfg.WorkerID
 		if h, err := os.Hostname(); err == nil {
 			address = fmt.Sprintf("http://%s:%d", h, cfg.Port)
+			hostname = h
 		}
 
-		for {
-			_, err := client.RegisterWorker(context.Background(), connect.NewRequest(&swarunv1.RegisterWorkerRequest{
-				WorkerId: cfg.WorkerID,
-				Hostname: cfg.WorkerID,
-				Address:  address,
-			}))
-			if err == nil {
-				logger.Info("Worker registered with controller", "worker_id", cfg.WorkerID, "controller_addr", cfg.ControllerAddr)
-				break
-			}
-			logger.Warn("Failed to register with controller, retrying in 5s", "error", err)
-			time.Sleep(5 * time.Second)
-		}
-
-		// Heartbeat loop
-		ticker := time.NewTicker(10 * time.Second)
-		slog.Debug("Starting heartbeat loop")
-		failCount := 0
-		for range ticker.C {
-			resp, err := client.Heartbeat(context.Background(), connect.NewRequest(&swarunv1.HeartbeatRequest{
-				WorkerId: cfg.WorkerID,
-			}))
-			if err != nil || !resp.Msg.Acknowledged {
-				failCount++
-				if err != nil {
-					logger.Warn("Heartbeat failed", "error", err, "fail_count", failCount)
-				} else {
-					logger.Warn("Heartbeat rejected by controller", "fail_count", failCount)
-				}
-
-				if failCount >= 3 {
-					logger.Error("Heartbeat failed 3 consecutive times. Shutting down worker...")
-					os.Exit(1)
-				}
-			} else {
-				failCount = 0
-			}
-		}
+		registerAndHeartbeat(context.Background(), client, cfg.WorkerID, hostname, address, 10*time.Second, logger)
 	}()
 
 	logger.Info("Starting worker", "worker_id", cfg.WorkerID, "controller_addr", cfg.ControllerAddr, "port", cfg.Port)
@@ -193,10 +301,8 @@ func runWorker(cfg *config.Config, sc swarun.Scenario, logger *slog.Logger) {
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
 		Handler: h2c.NewHandler(mux, &http2.Server{}),
 	}
-	if err := server.ListenAndServe(); err != nil {
-		logger.Error("Worker server failed", logging.ErrorAttr(err))
-		os.Exit(1)
-	}
+
+	startServerWithGracefulShutdown(server, logger, "Worker")
 }
 
 func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration, stagesStr string, logger *slog.Logger) {
@@ -208,46 +314,7 @@ func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration,
 	}
 	defer c.Close()
 
-	mux := http.NewServeMux()
-	path, handler := swarunv1connect.NewControllerServiceHandler(c)
-
-	// Add CORS support
-	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Connect-Protocol-Version, Connect-Timeout-Ms, X-Grpc-Web, X-User-Agent")
-		w.Header().Set("Access-Control-Max-Age", "3600")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		handler.ServeHTTP(w, r)
-	})
-
-	mux.Handle(path, corsHandler)
-
-	// Static files for dashboard
-	distFS, err := fs.Sub(staticFS, "web/dist")
-	if err != nil {
-		logger.Error("Failed to access embedded static files", logging.ErrorAttr(err))
-	} else {
-		fileServer := http.FileServer(http.FS(distFS))
-		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// gRPC パス以外でファイルが存在しない場合は index.html を返す (SPA routing)
-			if !strings.HasPrefix(r.URL.Path, path) {
-				f, err := distFS.Open(strings.TrimPrefix(r.URL.Path, "/"))
-				if err != nil {
-					// ファイルが見つからない場合は index.html を返す
-					r.URL.Path = "/"
-				} else {
-					f.Close()
-				}
-			}
-			fileServer.ServeHTTP(w, r)
-		}))
-	}
+	mux, _ := setupControllerMux(c, logger)
 
 	// スタンドアローンなので、ControllerAddr は自分自身を指すようにする
 	cfg.ControllerAddr = fmt.Sprintf("http://localhost:%d", cfg.Port)
@@ -290,30 +357,7 @@ func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration,
 			)
 			// アドレスにパスプレフィックスを含める
 			address := cfg.ControllerAddr + prefix
-			for {
-				_, err := client.RegisterWorker(context.Background(), connect.NewRequest(&swarunv1.RegisterWorkerRequest{
-					WorkerId: id,
-					Hostname: "localhost",
-					Address:  address,
-				}))
-				if err == nil {
-					logger.Info("Registered standalone worker", "id", id, "address", address)
-					break
-				}
-				logger.Warn("Failed to register standalone worker, retrying...", "id", id, logging.ErrorAttr(err))
-				time.Sleep(1 * time.Second)
-			}
-
-			// Heartbeat
-			ticker := time.NewTicker(30 * time.Second)
-			for range ticker.C {
-				_, err := client.Heartbeat(context.Background(), connect.NewRequest(&swarunv1.HeartbeatRequest{
-					WorkerId: id,
-				}))
-				if err != nil {
-					logger.Warn("Failed to send heartbeat", "id", id, logging.ErrorAttr(err))
-				}
-			}
+			registerAndHeartbeat(context.Background(), client, id, "localhost", address, 30*time.Second, logger)
 		}(workerID, workerPathPrefix)
 	}
 
@@ -334,29 +378,7 @@ func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration,
 			}
 
 			logger.Info("All workers registered, starting test automatically", "worker_count", workerCount)
-			var stages []*swarunv1.RampingStage
-			if stagesStr != "" {
-				parts := strings.Split(stagesStr, ",")
-				for _, p := range parts {
-					kv := strings.SplitN(p, ":", 2)
-					if len(kv) == 2 {
-						target, err := strconv.Atoi(kv[0])
-						if err != nil {
-							logger.Error("Failed to parse stage target", "stage", p, "error", err)
-							continue
-						}
-						dur, err := time.ParseDuration(kv[1])
-						if err != nil {
-							logger.Error("Failed to parse stage duration", "stage", p, "error", err)
-							continue
-						}
-						stages = append(stages, &swarunv1.RampingStage{
-							Target:   int32(target),
-							Duration: durationpb.New(dur),
-						})
-					}
-				}
-			}
+			stages := ParseStages(stagesStr, logger)
 
 			req := &swarunv1.RunTestRequest{
 				TestConfig: &swarunv1.StartTestRequest{
@@ -391,15 +413,7 @@ func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration,
 					continue
 				}
 
-				msg := resp.Msg
-				elapsed := time.Since(msg.GetStartTime().AsTime()).Round(time.Second)
-				fmt.Printf("\r%-10s %-10.2f %-10d %-10d %-10.2f ms",
-					elapsed,
-					msg.GetRps(),
-					msg.GetTotalSuccess(),
-					msg.GetTotalFailure(),
-					msg.GetAvgLatencyMs(),
-				)
+				PrintTestProgress(resp.Msg)
 
 				if !resp.Msg.GetIsRunning() {
 					fmt.Println() // 改行
@@ -411,40 +425,7 @@ func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration,
 			logger.Info("Auto-start test completed")
 			// 最終的なステータスを表示
 			if finalStatus != nil {
-				fmt.Println("\n==================== Test Summary ====================")
-				fmt.Printf("%-20s: %s\n", "Test Run ID", finalStatus.GetTestRunId())
-				fmt.Printf("%-20s: %s\n", "Duration", finalStatus.GetDuration().AsDuration().String())
-				fmt.Printf("%-20s: %d\n", "Total Success", finalStatus.GetTotalSuccess())
-				fmt.Printf("%-20s: %d\n", "Total Failure", finalStatus.GetTotalFailure())
-				fmt.Printf("%-20s: %.2f ms\n", "Avg Latency", finalStatus.GetAvgLatencyMs())
-				fmt.Printf("%-20s: %.2f ms\n", "Max Latency", finalStatus.GetMaxLatencyMs())
-				fmt.Printf("%-20s: %.2f ms\n", "Min Latency", finalStatus.GetMinLatencyMs())
-				fmt.Printf("%-20s: %.2f ms\n", "90%% Latency", finalStatus.GetP90LatencyMs())
-				fmt.Printf("%-20s: %.2f ms\n", "95%% Latency", finalStatus.GetP95LatencyMs())
-				fmt.Printf("%-20s: %.2f req/s\n", "RPS", finalStatus.GetRps())
-				fmt.Printf("%-20s: %d\n", "Workers", finalStatus.GetWorkerCount())
-				if !finalStatus.GetStartTime().AsTime().IsZero() {
-					fmt.Printf("%-20s: %s\n", "Start Time", finalStatus.GetStartTime().AsTime().Format(time.RFC3339))
-				}
-				if !finalStatus.GetEndTime().AsTime().IsZero() {
-					fmt.Printf("%-20s: %s\n", "End Time", finalStatus.GetEndTime().AsTime().Format(time.RFC3339))
-				}
-
-				// パスごとのメトリクスを表示
-				if finalStatus.PathMetrics != nil && len(finalStatus.PathMetrics) > 0 {
-					fmt.Println("\n-------------------- Path Metrics --------------------")
-					fmt.Printf("%-30s %10s %10s %10s %10s\n", "Path", "Success", "Failure", "RPS", "Avg Latency")
-					for path, m := range finalStatus.PathMetrics {
-						fmt.Printf("%-30s %10d %10d %10.2f %10.2f ms\n",
-							path,
-							m.GetTotalSuccess(),
-							m.GetTotalFailure(),
-							m.GetRps(),
-							m.GetAvgLatencyMs(),
-						)
-					}
-				}
-				fmt.Println("======================================================")
+				PrintTestSummary(finalStatus)
 			}
 
 			// しばらく待ってから終了（メトリクスの最終送信などのため）
@@ -458,8 +439,6 @@ func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration,
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
 		Handler: h2c.NewHandler(mux, &http2.Server{}),
 	}
-	if err := server.ListenAndServe(); err != nil {
-		logger.Error("Standalone server failed", logging.ErrorAttr(err))
-		os.Exit(1)
-	}
+
+	startServerWithGracefulShutdown(server, logger, "Standalone")
 }

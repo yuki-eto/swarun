@@ -165,17 +165,17 @@ func main() {
 		args.TotalRequests = runCount
 	}
 	if !isFlagPassed("s3-bucket") {
-		args.S3Bucket = cfg.S3Bucket
+		args.S3Bucket = cfg.S3.Bucket
 	} else {
 		args.S3Bucket = s3Bucket
 	}
 	if !isFlagPassed("s3-prefix") {
-		args.S3Prefix = cfg.S3Prefix
+		args.S3Prefix = cfg.S3.Prefix
 	} else {
 		args.S3Prefix = s3Prefix
 	}
 	if !isFlagPassed("s3-region") {
-		args.S3Region = cfg.S3Region
+		args.S3Region = cfg.S3.Region
 	} else {
 		args.S3Region = s3Region
 	}

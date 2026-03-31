@@ -9,6 +9,13 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+// S3Config は S3 関連の設定を保持します。
+type S3Config struct {
+	Bucket string `yaml:"bucket"`
+	Region string `yaml:"region"`
+	Prefix string `yaml:"prefix"`
+}
+
 // Config は swarun の全設定を保持する構造体です。
 type Config struct {
 	Port           int           `yaml:"port"`
@@ -16,9 +23,7 @@ type Config struct {
 	WorkerID       string        `yaml:"worker_id"`
 	LogLevel       string        `yaml:"log_level"`
 	DataDir        string        `yaml:"data_dir"`
-	S3Bucket       string        `yaml:"s3_bucket"`
-	S3Region       string        `yaml:"s3_region"`
-	S3Prefix       string        `yaml:"s3_prefix"`
+	S3             S3Config      `yaml:"s3"`
 	WorkerCount    int           `yaml:"worker_count"`
 	DockerImage    string        `yaml:"docker_image"`
 	ECSRegion      string        `yaml:"ecs_region"`
@@ -48,7 +53,9 @@ func DefaultConfig() *Config {
 		ControllerAddr: "http://localhost:8080",
 		LogLevel:       "info",
 		DataDir:        "data",
-		S3Prefix:       "swarun-metrics",
+		S3: S3Config{
+			Prefix: "swarun-metrics",
+		},
 		WorkerCount:    1,
 		DockerImage:    "swarun:latest",
 		Concurrency:    1,
@@ -113,13 +120,13 @@ func LoadEnv(cfg *Config) {
 		cfg.DataDir = v
 	}
 	if v := os.Getenv("SWARUN_S3_BUCKET"); v != "" {
-		cfg.S3Bucket = v
+		cfg.S3.Bucket = v
 	}
 	if v := os.Getenv("SWARUN_S3_REGION"); v != "" {
-		cfg.S3Region = v
+		cfg.S3.Region = v
 	}
 	if v := os.Getenv("SWARUN_S3_PREFIX"); v != "" {
-		cfg.S3Prefix = v
+		cfg.S3.Prefix = v
 	}
 	if v := os.Getenv("SWARUN_WORKER_COUNT"); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {

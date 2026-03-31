@@ -56,9 +56,9 @@ func NewController(logger *slog.Logger, cfg *config.Config) (*Controller, error)
 		logger:          logger,
 		cfg:             cfg,
 		dataDir:         cfg.DataDir,
-		defaultS3Bucket: cfg.S3Bucket,
-		defaultS3Region: cfg.S3Region,
-		defaultS3Prefix: cfg.S3Prefix,
+		defaultS3Bucket: cfg.S3.Bucket,
+		defaultS3Region: cfg.S3.Region,
+		defaultS3Prefix: cfg.S3.Prefix,
 	}
 
 	if err := c.loadTestRuns(); err != nil {
