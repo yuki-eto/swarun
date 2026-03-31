@@ -340,16 +340,16 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	return overallStats, pathMetrics, nil
 }
 
-func (d *duckDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]any, error) {
+func (d *duckDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]any, []string, error) {
 	rows, err := d.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var result []map[string]any
@@ -361,7 +361,7 @@ func (d *duckDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]an
 		}
 
 		if err := rows.Scan(columnPointers...); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		m := make(map[string]any)
@@ -402,7 +402,7 @@ func (d *duckDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]an
 		}
 		result = append(result, m)
 	}
-	return result, nil
+	return result, cols, nil
 }
 
 func (d *duckDBDAO) Close() error {

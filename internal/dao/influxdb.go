@@ -191,28 +191,35 @@ func (d *influxDBDAO) SelectStats(ctx context.Context, labels map[string]string,
 	return make(map[string]float64), make(map[string]map[string]float64), nil
 }
 
-func (d *influxDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]any, error) {
+func (d *influxDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]any, []string, error) {
 	result, err := d.queryAPI.Query(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query InfluxDB: %w", err)
+		return nil, nil, fmt.Errorf("failed to query InfluxDB: %w", err)
 	}
 	defer result.Close()
 
 	var rows []map[string]any
+	var columnNames []string
+	columnSet := make(map[string]struct{})
+
 	for result.Next() {
 		r := result.Record()
 		m := make(map[string]any)
 		for k, v := range r.Values() {
 			m[k] = v
+			if _, ok := columnSet[k]; !ok {
+				columnSet[k] = struct{}{}
+				columnNames = append(columnNames, k)
+			}
 		}
 		rows = append(rows, m)
 	}
 
 	if result.Err() != nil {
-		return nil, fmt.Errorf("error during InfluxDB query result iteration: %w", result.Err())
+		return nil, nil, fmt.Errorf("error during InfluxDB query result iteration: %w", result.Err())
 	}
 
-	return rows, nil
+	return rows, columnNames, nil
 }
 
 func (d *influxDBDAO) Close() error {

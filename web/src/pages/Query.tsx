@@ -25,54 +25,66 @@ import { useLocation } from "react-router-dom";
 import { client } from "../api/client";
 import type { QueryResultRow, TestRunSummary } from "../gen/swarun_pb";
 
-const QueryResultTable = memo(({ rows }: { rows: QueryResultRow[] }) => {
-	const columns =
-		rows.length > 0 ? Object.keys(rows[0].columns?.fields || {}) : [];
+const QueryResultTable = memo(
+	({
+		rows,
+		columnNames,
+	}: {
+		rows: QueryResultRow[];
+		columnNames: string[];
+	}) => {
+		const columns =
+			(columnNames?.length ?? 0) > 0
+				? columnNames
+				: rows.length > 0 && rows[0].columns?.fields
+					? Object.keys(rows[0].columns.fields)
+					: [];
 
-	if (rows.length === 0) return null;
+		if (rows.length === 0) return null;
 
-	return (
-		<TableContainer component={Paper} sx={{ maxHeight: 600 }}>
-			<Table stickyHeader size="small">
-				<TableHead>
-					<TableRow>
-						{columns.map((col) => (
-							<TableCell key={col}>
-								<b>{col}</b>
-							</TableCell>
-						))}
-					</TableRow>
-				</TableHead>
-				<TableBody>
-					{rows.map((row, i) => (
-						<TableRow
-							key={
-								row.columns?.fields.timestamp?.kind?.case === "stringValue"
-									? `${row.columns.fields.timestamp.kind.value}-${i}`
-									: i
-							}
-							hover
-						>
+		return (
+			<TableContainer component={Paper} sx={{ maxHeight: 600 }}>
+				<Table stickyHeader size="small">
+					<TableHead>
+						<TableRow>
 							{columns.map((col) => (
 								<TableCell key={col}>
-									{(() => {
-										const field = row.columns?.fields[col];
-										if (!field?.kind) return "";
-										if (field.kind.case === "structValue")
-											return JSON.stringify(field.kind.value);
-										if (field.kind.case === "listValue")
-											return JSON.stringify(field.kind.value);
-										return String(field.kind.value ?? "");
-									})()}
+									<b>{col}</b>
 								</TableCell>
 							))}
 						</TableRow>
-					))}
-				</TableBody>
-			</Table>
-		</TableContainer>
-	);
-});
+					</TableHead>
+					<TableBody>
+						{rows.map((row, i) => (
+							<TableRow
+								key={
+									row.columns?.fields.timestamp?.kind?.case === "stringValue"
+										? `${row.columns.fields.timestamp.kind.value}-${i}`
+										: i
+								}
+								hover
+							>
+								{columns.map((col) => (
+									<TableCell key={col}>
+										{(() => {
+											const field = row.columns?.fields[col];
+											if (!field?.kind) return "";
+											if (field.kind.case === "structValue")
+												return JSON.stringify(field.kind.value);
+											if (field.kind.case === "listValue")
+												return JSON.stringify(field.kind.value);
+											return String(field.kind.value ?? "");
+										})()}
+									</TableCell>
+								))}
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
+			</TableContainer>
+		);
+	},
+);
 
 const QueryPage = () => {
 	const location = useLocation();
@@ -80,6 +92,7 @@ const QueryPage = () => {
 	const [selectedId, setSelectedId] = useState("");
 	const [query, setQuery] = useState("SELECT * FROM metrics LIMIT 100");
 	const [rows, setRows] = useState<QueryResultRow[]>([]);
+	const [columnNames, setColumnNames] = useState<string[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -107,6 +120,7 @@ const QueryPage = () => {
 			});
 			// フロントエンドでの表示制限 (バックエンドでも制限しているが念のため)
 			setRows(response.rows.slice(0, 1000));
+			setColumnNames(response.columnNames || []);
 		} catch (err: unknown) {
 			if (err instanceof Error) {
 				setError(err.message);
@@ -114,6 +128,7 @@ const QueryPage = () => {
 				setError("Query execution failed");
 			}
 			setRows([]);
+			setColumnNames([]);
 		} finally {
 			setLoading(false);
 		}
@@ -178,7 +193,7 @@ const QueryPage = () => {
 				</Box>
 			</Paper>
 
-			<QueryResultTable rows={rows} />
+			<QueryResultTable rows={rows} columnNames={columnNames} />
 
 			<Backdrop
 				open={loading}

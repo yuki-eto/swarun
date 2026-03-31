@@ -2220,6 +2220,11 @@ export class QueryMetricsRequest extends Message<QueryMetricsRequest> {
  */
 export class QueryMetricsResponse extends Message<QueryMetricsResponse> {
   /**
+   * @generated from field: repeated string column_names = 2;
+   */
+  columnNames: string[] = [];
+
+  /**
    * @generated from field: repeated swarun.v1.QueryResultRow rows = 1;
    */
   rows: QueryResultRow[] = [];
@@ -2232,6 +2237,7 @@ export class QueryMetricsResponse extends Message<QueryMetricsResponse> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "swarun.v1.QueryMetricsResponse";
   static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 2, name: "column_names", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
     { no: 1, name: "rows", kind: "message", T: QueryResultRow, repeated: true },
   ]);
 

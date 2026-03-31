@@ -27,7 +27,7 @@ type MetricsDAO interface {
 	// labels でフィルタリング可能です。
 	SelectStats(ctx context.Context, labels map[string]string, start, end time.Time) (map[string]float64, map[string]map[string]float64, error)
 	// QueryRaw はバックエンド固有のクエリ（DuckDBならSQL、InfluxDBならFlux）を直接実行します。
-	QueryRaw(ctx context.Context, query string) ([]map[string]any, error)
+	QueryRaw(ctx context.Context, query string) ([]map[string]any, []string, error)
 	// Close はリソースを解放します。
 	Close() error
 }

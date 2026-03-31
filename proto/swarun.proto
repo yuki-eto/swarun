@@ -344,6 +344,7 @@ message QueryMetricsRequest {
 }
 
 message QueryMetricsResponse {
+  repeated string column_names = 2;
   repeated QueryResultRow rows = 1;
 }
 

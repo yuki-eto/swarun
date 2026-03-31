@@ -1232,7 +1232,7 @@ func (c *Controller) QueryMetrics(ctx context.Context, req *connect.Request[swar
 	defer storage.Close()
 
 	// 3. クエリ実行
-	rawRows, err := storage.QueryRaw(ctx, query)
+	rawRows, cols, err := storage.QueryRaw(ctx, query)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query failed: %w", err))
 	}
@@ -1255,5 +1255,5 @@ func (c *Controller) QueryMetrics(ctx context.Context, req *connect.Request[swar
 		respRows = append(respRows, &swarunv1.QueryResultRow{Columns: s})
 	}
 
-	return connect.NewResponse(&swarunv1.QueryMetricsResponse{Rows: respRows}), nil
+	return connect.NewResponse(&swarunv1.QueryMetricsResponse{Rows: respRows, ColumnNames: cols}), nil
 }
