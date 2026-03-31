@@ -20,8 +20,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// ClientArgs はクライアントモードの実行引数を保持する構造体です。
-type ClientArgs struct {
+// Args はクライアントモードの実行引数を保持する構造体です。
+type Args struct {
 	ControllerAddr  string
 	Command         string
 	TestID          string
@@ -52,7 +52,7 @@ type ClientArgs struct {
 }
 
 // Run はクライアントモードを実行します。
-func Run(args ClientArgs, logger *slog.Logger) {
+func Run(args Args, logger *slog.Logger) {
 	c := client.NewClient(args.ControllerAddr)
 	ctx := context.Background()
 

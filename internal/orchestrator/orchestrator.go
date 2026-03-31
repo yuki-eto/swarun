@@ -20,7 +20,8 @@ import (
 
 type Launcher interface {
 	Provision(ctx context.Context, req *swarunv1.ProvisionWorkersRequest) ([]string, error)
-	Teardown(ctx context.Context) error
+	TeardownAll(ctx context.Context) error
+	Teardown(ctx context.Context, workerID string) error
 }
 
 type Orchestrator struct {
@@ -107,7 +108,7 @@ func (o *Orchestrator) Provision(ctx context.Context, req *swarunv1.ProvisionWor
 	}
 }
 
-func (o *Orchestrator) Teardown(ctx context.Context) error {
+func (o *Orchestrator) TeardownAll(ctx context.Context) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
@@ -148,8 +149,8 @@ func (o *Orchestrator) Teardown(ctx context.Context) error {
 			errs = append(errs, fmt.Sprintf("failed to load AWS config for teardown (%s, %s): %v", info.region, workerID, err))
 			continue
 		}
-		client := ecs.NewFromConfig(cfg)
-		_, err = client.StopTask(ctx, &ecs.StopTaskInput{
+		ecsClient := ecs.NewFromConfig(cfg)
+		_, err = ecsClient.StopTask(ctx, &ecs.StopTaskInput{
 			Cluster: aws.String(info.cluster),
 			Task:    aws.String(info.taskARN),
 			Reason:  aws.String("Teardown requested by swarun controller"),
@@ -168,7 +169,7 @@ func (o *Orchestrator) Teardown(ctx context.Context) error {
 	return nil
 }
 
-func (o *Orchestrator) TeardownWorker(ctx context.Context, workerID string) error {
+func (o *Orchestrator) Teardown(ctx context.Context, workerID string) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
@@ -203,8 +204,8 @@ func (o *Orchestrator) TeardownWorker(ctx context.Context, workerID string) erro
 		if err != nil {
 			return fmt.Errorf("failed to load AWS config: %w", err)
 		}
-		client := ecs.NewFromConfig(cfg)
-		_, err = client.StopTask(ctx, &ecs.StopTaskInput{
+		ecsClient := ecs.NewFromConfig(cfg)
+		_, err = ecsClient.StopTask(ctx, &ecs.StopTaskInput{
 			Cluster: aws.String(info.cluster),
 			Task:    aws.String(info.taskARN),
 			Reason:  aws.String("Teardown requested by swarun controller"),

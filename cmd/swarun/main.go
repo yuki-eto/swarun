@@ -80,7 +80,7 @@ func main() {
 	logger := logging.Setup(cfg.LogLevel)
 
 	// フラグがデフォルト値から変更されていない場合、cfg (環境変数やYAML) の値を使用する
-	args := client.ClientArgs{
+	args := client.Args{
 		ControllerAddr:  controllerAddr,
 		Command:         command,
 		TestID:          testID,

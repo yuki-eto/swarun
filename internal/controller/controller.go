@@ -223,7 +223,7 @@ func (c *Controller) Close() error {
 	}
 
 	// オーケストレーターの終了処理
-	if err := c.orchestrator.Teardown(context.Background()); err != nil {
+	if err := c.orchestrator.TeardownAll(context.Background()); err != nil {
 		errs = append(errs, fmt.Sprintf("failed to teardown orchestrator: %v", err))
 	}
 
@@ -626,7 +626,7 @@ func (c *Controller) TeardownWorkers(
 	ctx context.Context,
 	_ *connect.Request[swarunv1.TeardownWorkersRequest],
 ) (*connect.Response[swarunv1.TeardownWorkersResponse], error) {
-	if err := c.orchestrator.Teardown(ctx); err != nil {
+	if err := c.orchestrator.TeardownAll(ctx); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
@@ -649,7 +649,7 @@ func (c *Controller) TeardownWorker(
 	}
 
 	// オーケストレーターで停止処理
-	if err := c.orchestrator.TeardownWorker(ctx, workerID); err != nil {
+	if err := c.orchestrator.Teardown(ctx, workerID); err != nil {
 		c.logger.Warn("Failed to teardown worker in orchestrator", "worker_id", workerID, "error", err)
 		// オーケストレーターで見つからなくても、メモリ上のリストから消すことは試みる
 	}
@@ -863,13 +863,9 @@ func (c *Controller) sendMetrics(
 				tr.PathMetrics.Add(path, m.GetName(), m.GetValue())
 
 				if path == "scenario_iteration" {
-					// 案Bにより、シナリオ単位の success/failure/latency_ms は送信されなくなったが、
-					// 過去のデータの互換性や、他のメトリクスがある可能性を考慮して集計処理は残す。
-					// ただし、現在は worker からは test_finished しか送られないはず。
 					if m.GetName() == "success" {
 						atomic.AddInt64(&tr.TotalIterations, int64(m.GetValue()))
 					}
-					// scenario_iteration のメトリクスは、全体の統計（Success/Failure/Latency）には含めない
 				} else {
 					switch m.GetName() {
 					case "success":
@@ -1025,9 +1021,6 @@ func (c *Controller) GetMetrics(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get storage: %w", err))
 	}
 
-	//labels := map[string]string{
-	//	"test_run_id": testRunID,
-	//}
 	rows, err := storage.SelectRows(ctx, metricName, labels, startTime, endTime, req.Msg.GetAggregateFunc(), req.Msg.GetAggregateWindow().AsDuration())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to select rows: %w", err))

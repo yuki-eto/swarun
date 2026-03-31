@@ -160,7 +160,7 @@ func startServerWithGracefulShutdown(server *http.Server, logger *slog.Logger, c
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil {
 			logger.Error(fmt.Sprintf("%s server failed", componentName), logging.ErrorAttr(err))
 			os.Exit(1)
 		}

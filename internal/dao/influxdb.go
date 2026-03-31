@@ -34,7 +34,7 @@ func NewInfluxDBDAO(ctx context.Context, url, token, org, bucket, testRunID stri
 	// バケットが存在するか確認し、なければ作成する
 	bucketsAPI := client.BucketsAPI()
 	b, err := bucketsAPI.FindBucketByName(ctx, bucketName)
-	if err != nil {
+	if err != nil || b == nil {
 		orgAPI := client.OrganizationsAPI()
 		o, err := orgAPI.FindOrganizationByName(ctx, org)
 		if err != nil {
@@ -42,18 +42,6 @@ func NewInfluxDBDAO(ctx context.Context, url, token, org, bucket, testRunID stri
 			return nil, fmt.Errorf("failed to find organization %s: %w", org, err)
 		}
 
-		_, err = bucketsAPI.CreateBucketWithName(ctx, o, bucketName)
-		if err != nil {
-			client.Close()
-			return nil, fmt.Errorf("failed to create bucket %s: %w", bucketName, err)
-		}
-	} else if b == nil {
-		orgAPI := client.OrganizationsAPI()
-		o, err := orgAPI.FindOrganizationByName(ctx, org)
-		if err != nil {
-			client.Close()
-			return nil, fmt.Errorf("failed to find organization %s: %w", org, err)
-		}
 		_, err = bucketsAPI.CreateBucketWithName(ctx, o, bucketName)
 		if err != nil {
 			client.Close()

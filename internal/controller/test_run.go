@@ -72,9 +72,5 @@ func (m *PathMetricsMap) Add(path, metric string, val float64) {
 		if stats.MinLatencyMs == 0 || stats.MinLatencyMs > val {
 			stats.MinLatencyMs = val
 		}
-
-		// パーセンタイルをインメモリで逐次計算するのは非効率なため、
-		// GetTestStatus 時に Latencies があれば計算するが、
-		// storage からの復元時などのために確定値を保持できるようにする。
 	}
 }
