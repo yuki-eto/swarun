@@ -154,6 +154,8 @@ const TestRunDetail = () => {
 
 	const startTime = status?.startTime?.toDate();
 	const endTime = status?.endTime?.toDate();
+	const firstRequestTime = status?.firstRequestTime?.toDate();
+	const lastRequestTime = status?.lastRequestTime?.toDate();
 	const durationSec = status?.duration ? Number(status.duration.seconds) : 0;
 	const expectedEndTime =
 		startTime && durationSec > 0
@@ -161,13 +163,24 @@ const TestRunDetail = () => {
 			: null;
 
 	// Calculate duration for RPS
-	const actualDurationSec = status?.isRunning
+	let actualDurationSec = status?.isRunning
 		? startTime
 			? Math.max(1, (Date.now() - startTime.getTime()) / 1000)
 			: 0
 		: startTime && endTime && !endTime.toISOString().startsWith("1970")
 			? Math.max(1, (endTime.getTime() - startTime.getTime()) / 1000)
 			: durationSec || 1;
+
+	if (firstRequestTime && lastRequestTime && lastRequestTime.getTime() > firstRequestTime.getTime()) {
+		actualDurationSec = (lastRequestTime.getTime() - firstRequestTime.getTime()) / 1000;
+	} else if (rpsMetrics.length > 0) {
+		const first = rpsMetrics[0].timestamp?.toDate();
+		const last = rpsMetrics[rpsMetrics.length - 1].timestamp?.toDate();
+		if (first && last && last.getTime() > first.getTime()) {
+			actualDurationSec = (last.getTime() - first.getTime()) / 1000;
+		}
+	}
+
 	const calculatedRps =
 		(Number(status?.totalSuccess || 0) + Number(status?.totalFailure || 0)) /
 		actualDurationSec;
@@ -224,7 +237,7 @@ const TestRunDetail = () => {
 				label: "RPS",
 				data: rpsMetrics.map((p) => ({
 					x: p.timestamp?.toDate(),
-					y: p.value / 5, // 5s aggregate window so divide by 5 for per-second rate
+					y: p.value / 5,
 				})),
 				borderColor: "rgb(54, 162, 235)",
 				tension: 0.1,

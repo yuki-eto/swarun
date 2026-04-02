@@ -19,13 +19,18 @@ type duckDBDAO struct {
 }
 
 // NewDuckDBDAO は DuckDB をバックエンドとする MetricsDAO を作成します。
-func NewDuckDBDAO(dataDir, testRunID string) (MetricsDAO, error) {
-	path := filepath.Join(dataDir, testRunID)
-	if err := os.MkdirAll(path, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create data directory %s: %w", path, err)
+func NewDuckDBDAO(dataDir, testRunID string, inMemory bool) (MetricsDAO, error) {
+	var dbPath string
+	if inMemory {
+		dbPath = ":memory:"
+	} else {
+		path := filepath.Join(dataDir, testRunID)
+		if err := os.MkdirAll(path, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create data directory %s: %w", path, err)
+		}
+		dbPath = filepath.Join(path, "metrics.duckdb")
 	}
 
-	dbPath := filepath.Join(path, "metrics.duckdb")
 	db, err := sql.Open("duckdb", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open duckdb at %s: %w", dbPath, err)
@@ -403,6 +408,32 @@ func (d *duckDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]an
 		result = append(result, m)
 	}
 	return result, cols, nil
+}
+
+func (d *duckDBDAO) Export(destPath string) error {
+	// エクスポート先のディレクトリ作成
+	if err := os.MkdirAll(destPath, 0755); err != nil {
+		return fmt.Errorf("failed to create export directory: %w", err)
+	}
+
+	dbFile := filepath.Join(destPath, "metrics.duckdb")
+
+	// 1. ディスク上のデータベースファイルを ATTACH する
+	// 2. インメモリの metrics テーブルからディスク上のテーブルへデータをコピーする
+	// ※ テスト終了時に一度だけ呼び出す想定なので CREATE TABLE AS SELECT を使用
+	queries := []string{
+		fmt.Sprintf("ATTACH '%s' AS disk_db", dbFile),
+		"CREATE TABLE disk_db.metrics AS SELECT * FROM metrics",
+		"DETACH disk_db",
+	}
+
+	for _, q := range queries {
+		if _, err := d.db.Exec(q); err != nil {
+			return fmt.Errorf("failed to execute query during export (%s): %w", q, err)
+		}
+	}
+
+	return nil
 }
 
 func (d *duckDBDAO) Close() error {

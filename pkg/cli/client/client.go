@@ -115,8 +115,7 @@ func Run(args Args, logger *slog.Logger) {
 		}
 
 		fmt.Printf("Watching test status for %s (polling every 1s)\n", testRunID)
-		fmt.Printf("\n%-10s %-10s %-10s %-10s %-10s %-15s\n", "Elapsed", "VUs", "Workers", "RPS", "Success", "Avg Latency")
-		fmt.Println("-----------------------------------------------------------------------")
+		cli.PrintTestProgressHeader()
 
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()

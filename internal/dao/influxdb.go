@@ -210,6 +210,11 @@ func (d *influxDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]
 	return rows, columnNames, nil
 }
 
+func (d *influxDBDAO) Export(destPath string) error {
+	// InfluxDB では未実装
+	return nil
+}
+
 func (d *influxDBDAO) Close() error {
 	d.client.Close()
 	return nil

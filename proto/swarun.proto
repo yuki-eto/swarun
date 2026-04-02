@@ -195,6 +195,8 @@ message GetTestStatusResponse {
   google.protobuf.Duration duration = 15;
   int32 concurrency = 16;
   int64 total_iterations = 17;
+  google.protobuf.Timestamp first_request_time = 18;
+  google.protobuf.Timestamp last_request_time = 19;
 }
 
 message PathMetrics {

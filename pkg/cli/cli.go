@@ -27,15 +27,26 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
+const (
+	progressHeaderFormat = "\n%-10s %-10s %-10s %-10s %-10s %-10s %-15s\n"
+	progressDataFormat   = "\r%-10s %-10d %-10d %-10.2f %-10d %-10d %-10.2f ms   "
+)
+
+func PrintTestProgressHeader() {
+	fmt.Printf(progressHeaderFormat, "Elapsed", "VUs", "Workers", "RPS", "Success", "Failure", "Avg Latency")
+	fmt.Println("-----------------------------------------------------------------------")
+}
+
 // PrintTestProgress はテスト実行中の進捗状況を表示します。
 func PrintTestProgress(status *swarunv1.GetTestStatusResponse) {
 	elapsed := time.Since(status.GetStartTime().AsTime()).Round(time.Second)
-	fmt.Printf("\r%-10s %-10d %-10d %-10.2f %-10d %-10.2f ms   ",
+	fmt.Printf(progressDataFormat,
 		elapsed,
 		status.GetConcurrency(),
 		status.GetWorkerCount(),
 		status.GetRps(),
 		status.GetTotalSuccess(),
+		status.GetTotalFailure(),
 		status.GetAvgLatencyMs(),
 	)
 }
@@ -399,8 +410,7 @@ func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration,
 			autoTestRunID := resp.Msg.GetTestRunId()
 
 			// テストの終了を待機
-			fmt.Printf("\n%-10s %-10s %-10s %-10s %-10s\n", "Elapsed", "RPS", "Success", "Failure", "Avg Latency")
-			fmt.Println("---------------------------------------------------------------")
+			PrintTestProgressHeader()
 
 			var finalStatus *swarunv1.GetTestStatusResponse
 			for {

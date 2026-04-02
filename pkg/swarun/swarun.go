@@ -39,13 +39,22 @@ var (
 	// httpClient is the custom HTTP client with Keepalive settings.
 	httpClient *http.Client
 
-	metricQueue chan *swarunv1.MetricBatch
+	metricQueue chan *swarunv1.MetricEntry
 	wg          sync.WaitGroup
 	done        chan struct{}
 )
 
+var (
+	// batchMu protects pendingMetrics
+	batchMu        sync.Mutex
+	pendingMetrics []*swarunv1.MetricEntry
+	lastFlush      time.Time
+)
+
 const (
-	queueSize = 1000
+	queueSize     = 20000
+	batchSize     = 100
+	batchInterval = 100 * time.Millisecond
 )
 
 func initEnv() {
@@ -54,7 +63,7 @@ func initEnv() {
 		testRunID = os.Getenv("SWARUN_TEST_RUN_ID")
 		controllerAddr = os.Getenv("SWARUN_CONTROLLER_ADDR")
 
-		metricQueue = make(chan *swarunv1.MetricBatch, queueSize)
+		metricQueue = make(chan *swarunv1.MetricEntry, queueSize)
 		done = make(chan struct{})
 
 		if controllerAddr != "" {
@@ -84,11 +93,57 @@ func initEnv() {
 }
 
 func asyncSender() {
-	for batch := range metricQueue {
-		sendWithRetry(batch)
+	ticker := time.NewTicker(batchInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case entry, ok := <-metricQueue:
+			if !ok {
+				flushBatch()
+				close(done)
+				return
+			}
+			batchMu.Lock()
+			pendingMetrics = append(pendingMetrics, entry)
+			shouldFlush := len(pendingMetrics) >= batchSize
+			batchMu.Unlock()
+
+			if shouldFlush {
+				flushBatch()
+			}
+		case <-ticker.C:
+			flushBatch()
+		}
+	}
+}
+
+func flushBatch() {
+	batchMu.Lock()
+	if len(pendingMetrics) == 0 {
+		batchMu.Unlock()
+		return
+	}
+	entries := pendingMetrics
+	pendingMetrics = nil
+	batchMu.Unlock()
+
+	trID := GetTestRunID()
+	if trID == "" {
+		return
+	}
+
+	batch := &swarunv1.MetricBatch{
+		WorkerId:  workerID,
+		TestRunId: trID,
+		Timestamp: timestamppb.Now(),
+		Metrics:   entries,
+	}
+
+	sendWithRetry(batch)
+	for range len(entries) {
 		wg.Done()
 	}
-	close(done)
 }
 
 func sendWithRetry(batch *swarunv1.MetricBatch) {
@@ -175,19 +230,14 @@ func ReportMetrics(label string, metrics map[string]float64) {
 		})
 	}
 
-	batch := &swarunv1.MetricBatch{
-		WorkerId:  workerID,
-		TestRunId: trID,
-		Timestamp: timestamppb.Now(),
-		Metrics:   metricEntries,
-	}
-
-	wg.Add(1)
-	select {
-	case metricQueue <- batch:
-	default:
-		slog.Warn("Metric queue is full, dropping metric", "label", label)
-		wg.Done()
+	for _, entry := range metricEntries {
+		wg.Add(1)
+		select {
+		case metricQueue <- entry:
+		default:
+			slog.Warn("Metric queue is full, dropping metric", "label", label)
+			wg.Done()
+		}
 	}
 }
 
@@ -214,19 +264,14 @@ func ReportLatencies(label string, metrics map[string]time.Duration) {
 		})
 	}
 
-	batch := &swarunv1.MetricBatch{
-		WorkerId:  workerID,
-		TestRunId: trID,
-		Timestamp: timestamppb.Now(),
-		Metrics:   metricEntries,
-	}
-
-	wg.Add(1)
-	select {
-	case metricQueue <- batch:
-	default:
-		slog.Warn("Metric queue is full, dropping metric", "label", label)
-		wg.Done()
+	for _, entry := range metricEntries {
+		wg.Add(1)
+		select {
+		case metricQueue <- entry:
+		default:
+			slog.Warn("Metric queue is full, dropping metric", "label", label)
+			wg.Done()
+		}
 	}
 }
 
@@ -244,22 +289,15 @@ func ReportCustom(name string, value float64, labels map[string]string) {
 		labels["path"] = "unknown"
 	}
 
-	batch := &swarunv1.MetricBatch{
-		WorkerId:  workerID,
-		TestRunId: trID,
-		Timestamp: timestamppb.Now(),
-		Metrics: []*swarunv1.MetricEntry{
-			{
-				Name:   name,
-				Value:  value,
-				Labels: labels,
-			},
-		},
+	entry := &swarunv1.MetricEntry{
+		Name:   name,
+		Value:  value,
+		Labels: labels,
 	}
 
 	wg.Add(1)
 	select {
-	case metricQueue <- batch:
+	case metricQueue <- entry:
 	default:
 		slog.Warn("Metric queue is full, dropping metric", "metric", name)
 		wg.Done()

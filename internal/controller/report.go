@@ -207,7 +207,7 @@ const reportTemplate = `
                     label: 'RPS',
                     data: filteredRpsMetrics.map(p => ({
                         x: new Date(p.timestamp),
-                        y: p.value / 5 // 5s aggregate window so divide by 5 for per-second rate
+                        y: p.value / 5 
                     })),
                     borderColor: 'rgb(54, 162, 235)',
                     tension: 0.1,
@@ -275,7 +275,23 @@ func (c *Controller) generateHTMLReport(status *swarunv1.GetTestStatusResponse, 
 	}
 
 	actualDurationSec := float64(1)
-	if !startTime.IsZero() {
+	if status.LastRequestTime != nil && status.FirstRequestTime != nil {
+		first := status.FirstRequestTime.AsTime()
+		last := status.LastRequestTime.AsTime()
+		if last.After(first) {
+			actualDurationSec = last.Sub(first).Seconds()
+		}
+	}
+
+	if actualDurationSec < 1 && len(rpsPoints) > 0 {
+		first := rpsPoints[0].Timestamp.AsTime()
+		last := rpsPoints[len(rpsPoints)-1].Timestamp.AsTime()
+		if last.After(first) {
+			actualDurationSec = last.Sub(first).Seconds()
+		}
+	}
+
+	if actualDurationSec < 1 && !startTime.IsZero() {
 		if status.IsRunning || endTime.IsZero() || endTime.Unix() < 1000 {
 			actualDurationSec = time.Since(startTime).Seconds()
 		} else {

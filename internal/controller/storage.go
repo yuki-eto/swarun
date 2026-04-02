@@ -28,7 +28,12 @@ func (c *Controller) getStorage(testRunID string) (dao.MetricsDAO, error) {
 			)
 		default:
 			// Default to duckdb
-			d, daoErr = dao.NewDuckDBDAO(c.dataDir, testRunID)
+			useInMemory := c.cfg.DuckDBInMemoryMode
+			if tr, ok := c.testRuns.Get(testRunID); ok {
+				// Only use in-memory if the test is currently running
+				useInMemory = useInMemory && tr.IsRunning
+			}
+			d, daoErr = dao.NewDuckDBDAO(c.dataDir, testRunID, useInMemory)
 		}
 
 		if daoErr != nil {

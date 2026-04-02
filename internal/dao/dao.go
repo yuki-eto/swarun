@@ -28,6 +28,8 @@ type MetricsDAO interface {
 	SelectStats(ctx context.Context, labels map[string]string, start, end time.Time) (map[string]float64, map[string]map[string]float64, error)
 	// QueryRaw はバックエンド固有のクエリ（DuckDBならSQL、InfluxDBならFlux）を直接実行します。
 	QueryRaw(ctx context.Context, query string) ([]map[string]any, []string, error)
+	// Export はデータを指定されたパスにエクスポートします。
+	Export(destPath string) error
 	// Close はリソースを解放します。
 	Close() error
 }

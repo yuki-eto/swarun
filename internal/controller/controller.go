@@ -489,9 +489,23 @@ func (c *Controller) GetTestStatus(
 		avgLatency = float64(tr.TotalLatency.Milliseconds()) / float64(tr.LatencyCount)
 	}
 
-	if duration > 0 {
-		rps = float64(tr.TotalSuccess+tr.TotalFailure) / duration.Seconds()
+	// Calculate duration for RPS
+	actualDurationSec := float64(1)
+	if !tr.LastRequestTime.IsZero() && !tr.FirstRequestTime.IsZero() {
+		if tr.LastRequestTime.After(tr.FirstRequestTime) {
+			actualDurationSec = tr.LastRequestTime.Sub(tr.FirstRequestTime).Seconds()
+		}
 	}
+
+	if actualDurationSec < 1 && duration > 0 {
+		actualDurationSec = duration.Seconds()
+	}
+
+	if actualDurationSec < 1 {
+		actualDurationSec = 1
+	}
+
+	rps = float64(tr.TotalSuccess+tr.TotalFailure) / actualDurationSec
 
 	// パーセンタイル計算 (これだけは生データが必要)
 	tr.LatenciesMu.RLock()
@@ -585,23 +599,25 @@ func (c *Controller) GetTestStatus(
 	}
 
 	res := &swarunv1.GetTestStatusResponse{
-		TestRunId:       tr.ID,
-		IsRunning:       tr.IsRunning,
-		TotalSuccess:    tr.TotalSuccess,
-		TotalFailure:    tr.TotalFailure,
-		AvgLatencyMs:    avgLatency,
-		WorkerCount:     tr.WorkerCount,
-		StartTime:       timestamppb.New(tr.StartTime),
-		MaxLatencyMs:    tr.MaxLatencyMs,
-		MinLatencyMs:    tr.MinLatencyMs,
-		P90LatencyMs:    p90,
-		P95LatencyMs:    p95,
-		Rps:             rps,
-		EndTime:         timestamppb.New(tr.EndTime),
-		PathMetrics:     pathMetrics,
-		Duration:        durationpb.New(tr.ConfiguredDuration),
-		Concurrency:     tr.Concurrency,
-		TotalIterations: tr.TotalIterations,
+		TestRunId:        tr.ID,
+		IsRunning:        tr.IsRunning,
+		TotalSuccess:     tr.TotalSuccess,
+		TotalFailure:     tr.TotalFailure,
+		AvgLatencyMs:     avgLatency,
+		WorkerCount:      tr.WorkerCount,
+		StartTime:        timestamppb.New(tr.StartTime),
+		MaxLatencyMs:     tr.MaxLatencyMs,
+		MinLatencyMs:     tr.MinLatencyMs,
+		P90LatencyMs:     p90,
+		P95LatencyMs:     p95,
+		Rps:              rps,
+		EndTime:          timestamppb.New(tr.EndTime),
+		PathMetrics:      pathMetrics,
+		Duration:         durationpb.New(tr.ConfiguredDuration),
+		Concurrency:      tr.Concurrency,
+		TotalIterations:  tr.TotalIterations,
+		FirstRequestTime: timestamppb.New(tr.FirstRequestTime),
+		LastRequestTime:  timestamppb.New(tr.LastRequestTime),
 	}
 	return connect.NewResponse(res), nil
 }
@@ -851,6 +867,14 @@ func (c *Controller) sendMetrics(
 		for _, m := range batch.GetMetrics() {
 			// 進捗状況を更新
 			if tr, ok := c.testRuns.Get(testRunID); ok {
+				// 最初と最後のリクエスト時刻を記録
+				if tr.FirstRequestTime.IsZero() || ts.Before(tr.FirstRequestTime) {
+					tr.FirstRequestTime = ts
+				}
+				if ts.After(tr.LastRequestTime) {
+					tr.LastRequestTime = ts
+				}
+
 				// パスごとのメトリクスを集計 (インメモリ)
 				path := m.GetLabels()["path"]
 				if path == "" {
@@ -902,6 +926,19 @@ func (c *Controller) sendMetrics(
 								tr.IsRunning = false
 								tr.EndTime = time.Now()
 								c.logger.Info("Test run finished", "test_run_id", targetID, "success", tr.TotalSuccess, "failure", tr.TotalFailure, "end_time", tr.EndTime)
+
+								// インメモリモードの場合はデータをエクスポートする
+								if c.cfg.DuckDBInMemoryMode {
+									if storage, err := c.getStorage(targetID); err == nil {
+										destPath := filepath.Join(c.dataDir, targetID)
+										if err := storage.Export(destPath); err != nil {
+											c.logger.Error("Failed to export in-memory database", "test_run_id", targetID, "error", err)
+										} else {
+											c.logger.Info("Successfully exported in-memory database", "test_run_id", targetID, "dest", destPath)
+										}
+									}
+								}
+
 								if err := c.saveTestRuns(); err != nil {
 									c.logger.Error("Failed to save test runs on finish", "error", err)
 								}
@@ -940,9 +977,6 @@ func (c *Controller) sendMetrics(
 		if err := storage.InsertRows(ctx, rows); err != nil {
 			c.logger.Error("Failed to insert rows to storage", "test_run_id", testRunID, logging.ErrorAttr(err))
 		}
-	}
-	if err := stream.Err(); err != nil {
-		return nil, err
 	}
 	return connect.NewResponse(&swarunv1.SendMetricsResponse{Accepted: true}), nil
 }
@@ -1215,7 +1249,7 @@ func (c *Controller) QueryMetrics(ctx context.Context, req *connect.Request[swar
 			testRunID,
 		)
 	default:
-		storage, err = dao.NewDuckDBDAO(c.dataDir, testRunID)
+		storage, err = dao.NewDuckDBDAO(c.dataDir, testRunID, false)
 	}
 
 	if err != nil {

@@ -15,3 +15,6 @@ data/
 Dockerfile
 Dockerfile.dev
 .dockerignore
+
+script/*
+cdk/*

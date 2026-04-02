@@ -21,6 +21,8 @@ type TestRun struct {
 	FinishedWorkerCount int32           `json:"finished_worker_count"`
 	MaxLatencyMs        float64         `json:"max_latency_ms"`
 	MinLatencyMs        float64         `json:"min_latency_ms"`
+	FirstRequestTime    time.Time       `json:"first_request_time"`
+	LastRequestTime     time.Time       `json:"last_request_time"`
 	Latencies           []float64       `json:"-"`
 	LatenciesMu         sync.RWMutex    `json:"-"`
 	PathMetrics         *PathMetricsMap `json:"path_metrics"`

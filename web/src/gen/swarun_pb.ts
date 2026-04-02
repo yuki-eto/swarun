@@ -975,6 +975,16 @@ export class GetTestStatusResponse extends Message<GetTestStatusResponse> {
    */
   totalIterations = protoInt64.zero;
 
+  /**
+   * @generated from field: google.protobuf.Timestamp first_request_time = 18;
+   */
+  firstRequestTime?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_request_time = 19;
+   */
+  lastRequestTime?: Timestamp;
+
   constructor(data?: PartialMessage<GetTestStatusResponse>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1000,6 +1010,8 @@ export class GetTestStatusResponse extends Message<GetTestStatusResponse> {
     { no: 15, name: "duration", kind: "message", T: Duration },
     { no: 16, name: "concurrency", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
     { no: 17, name: "total_iterations", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 18, name: "first_request_time", kind: "message", T: Timestamp },
+    { no: 19, name: "last_request_time", kind: "message", T: Timestamp },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): GetTestStatusResponse {

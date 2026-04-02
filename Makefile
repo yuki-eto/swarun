@@ -16,7 +16,7 @@ build-web: gen-web-proto
 build-go:
 	mkdir -p tmp
 	CGO_ENABLED=1 go build -o tmp/swarun ./cmd/swarun/main.go
-	CGO_ENABLED=1 go build -o tmp/swarun-example ./examples/simple-get/main.go
+	CGO_ENABLED=1 go build -o tmp/swarun-condor ./scenarios/condor/main.go
 
 test-go:
 	go test ./...
@@ -29,6 +29,11 @@ docker-compose-down:
 
 docker-build:
 	docker build -t swarun:latest .
+
+docker-push-ecr:
+	aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin 647655508639.dkr.ecr.ap-northeast-1.amazonaws.com
+	docker tag swarun:latest 647655508639.dkr.ecr.ap-northeast-1.amazonaws.com/condor-swarun:latest
+	docker push 647655508639.dkr.ecr.ap-northeast-1.amazonaws.com/condor-swarun:latest
 
 docker-create-network:
 	docker network inspect swarun_default >/dev/null 2>&1 || \
@@ -44,6 +49,12 @@ docker-run: docker-build docker-create-network
 		-e SWARUN_DATA_DIR=/app/data \
 		-e SWARUN_PLATFORM=docker \
 		swarun:latest -mode controller
+
+cdk-diff:
+	cd cdk && pnpm cdk-diff CondorSwarunCdkStack
+
+cdk-deploy:
+	cd cdk && pnpm cdk-deploy CondorSwarunCdkStack
 
 clean:
 	rm -rf tmp/

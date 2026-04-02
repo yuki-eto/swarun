@@ -18,24 +18,25 @@ type S3Config struct {
 
 // Config は swarun の全設定を保持する構造体です。
 type Config struct {
-	Port           int           `yaml:"port"`
-	ControllerAddr string        `yaml:"controller_addr"`
-	WorkerID       string        `yaml:"worker_id"`
-	LogLevel       string        `yaml:"log_level"`
-	DataDir        string        `yaml:"data_dir"`
-	S3             S3Config      `yaml:"s3"`
-	WorkerCount    int           `yaml:"worker_count"`
-	DockerImage    string        `yaml:"docker_image"`
-	ECSRegion      string        `yaml:"ecs_region"`
-	ECSCluster     string        `yaml:"ecs_cluster"`
-	ECSTaskDef     string        `yaml:"ecs_task_def"`
-	ECSSubnets     string        `yaml:"ecs_subnets"`
-	ECSSG          string        `yaml:"ecs_sg"`
-	Command        string        `yaml:"command"`
-	Concurrency    int           `yaml:"concurrency"`
-	Duration       time.Duration `yaml:"duration"`
-	TotalRequests  int64         `yaml:"total_requests"`
-	AutoStart      bool          `yaml:"auto_start"`
+	Port               int           `yaml:"port"`
+	ControllerAddr     string        `yaml:"controller_addr"`
+	WorkerID           string        `yaml:"worker_id"`
+	LogLevel           string        `yaml:"log_level"`
+	DataDir            string        `yaml:"data_dir"`
+	DuckDBInMemoryMode bool          `yaml:"duckdb_in_memory_mode"`
+	S3                 S3Config      `yaml:"s3"`
+	WorkerCount        int           `yaml:"worker_count"`
+	DockerImage        string        `yaml:"docker_image"`
+	ECSRegion          string        `yaml:"ecs_region"`
+	ECSCluster         string        `yaml:"ecs_cluster"`
+	ECSTaskDef         string        `yaml:"ecs_task_def"`
+	ECSSubnets         string        `yaml:"ecs_subnets"`
+	ECSSG              string        `yaml:"ecs_sg"`
+	Command            string        `yaml:"command"`
+	Concurrency        int           `yaml:"concurrency"`
+	Duration           time.Duration `yaml:"duration"`
+	TotalRequests      int64         `yaml:"total_requests"`
+	AutoStart          bool          `yaml:"auto_start"`
 	// Metrics backend settings
 	MetricsBackend string `yaml:"metrics_backend"` // "duckdb" (default) or "influxdb"
 	InfluxDBURL    string `yaml:"influxdb_url"`
@@ -49,10 +50,11 @@ type Config struct {
 // DefaultConfig はデフォルトの設定を返します。
 func DefaultConfig() *Config {
 	return &Config{
-		Port:           8080,
-		ControllerAddr: "http://localhost:8080",
-		LogLevel:       "info",
-		DataDir:        "data",
+		Port:               8080,
+		ControllerAddr:     "http://localhost:8080",
+		LogLevel:           "info",
+		DataDir:            "data",
+		DuckDBInMemoryMode: false,
 		S3: S3Config{
 			Prefix: "swarun-metrics",
 		},
@@ -118,6 +120,11 @@ func LoadEnv(cfg *Config) {
 	}
 	if v := os.Getenv("SWARUN_DATA_DIR"); v != "" {
 		cfg.DataDir = v
+	}
+	if v := os.Getenv("SWARUN_DUCKDB_IN_MEMORY"); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			cfg.DuckDBInMemoryMode = b
+		}
 	}
 	if v := os.Getenv("SWARUN_S3_BUCKET"); v != "" {
 		cfg.S3.Bucket = v
