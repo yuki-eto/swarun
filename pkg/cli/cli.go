@@ -78,9 +78,13 @@ func PrintTestSummary(status *swarunv1.GetTestStatusResponse) {
 	// パスごとのメトリクスを表示
 	if status.PathMetrics != nil && len(status.PathMetrics) > 0 {
 		fmt.Println("\n-------------------- Path Metrics --------------------")
-		fmt.Printf("%-30s %10s %10s %10s %10s\n", "Path", "Success", "Failure", "RPS", "Avg Latency")
+		fmt.Printf("%-10s %-30s %10s %10s %10s %10s\n", "Method", "Path", "Success", "Failure", "RPS", "Avg Latency")
 		for path, m := range status.PathMetrics {
-			fmt.Printf("%-30s %10d %10d %10.2f %10.2f ms\n",
+			if path == "scenario_iteration" {
+				continue
+			}
+			fmt.Printf("%-10s %-30s %10d %10d %10.2f %10.2f ms\n",
+				m.GetMethod(),
 				path,
 				m.GetTotalSuccess(),
 				m.GetTotalFailure(),
@@ -124,6 +128,12 @@ func ParseStages(stagesStr string, logger *slog.Logger) []*swarunv1.RampingStage
 func setupControllerMux(c *controller.Controller, logger *slog.Logger) (*http.ServeMux, string) {
 	mux := http.NewServeMux()
 	path, handler := swarunv1connect.NewControllerServiceHandler(c)
+
+	// health check
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 
 	// Add CORS support
 	corsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -399,6 +409,7 @@ func runStandalone(cfg *config.Config, sc swarun.Scenario, rampUp time.Duration,
 					MaxDuration:    durationpb.New(cfg.Duration * 2),
 					RampUpDuration: durationpb.New(rampUp),
 					Stages:         stages,
+					Metadata:       cfg.Metadata,
 				},
 				// 全てのワーカーを対象にする
 			}

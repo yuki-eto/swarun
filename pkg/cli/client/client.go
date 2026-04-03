@@ -49,6 +49,8 @@ type Args struct {
 	WorkerID        string
 	Query           string
 	QueryFormat     string
+	Metadata        string
+	FilePath        string
 }
 
 // Run はクライアントモードを実行します。
@@ -68,6 +70,7 @@ func Run(args Args, logger *slog.Logger) {
 				MaxDuration:    durationpb.New(args.MaxDuration),
 				RampUpDuration: durationpb.New(args.RampUp),
 				Stages:         stages,
+				Metadata:       args.Metadata,
 			},
 		})
 		if err != nil {
@@ -293,16 +296,20 @@ func Run(args Args, logger *slog.Logger) {
 			logger.Error("Failed to export data", logging.ErrorAttr(err))
 			os.Exit(1)
 		}
-		f, err := os.Create("swarun-data.zip")
+		fileName := "swarun-data.zip"
+		if args.FilePath != "" {
+			fileName = args.FilePath
+		}
+		f, err := os.Create(fileName)
 		if err != nil {
-			logger.Error("Failed to create local zip file", logging.ErrorAttr(err))
+			logger.Error("Failed to create local zip file", "path", fileName, logging.ErrorAttr(err))
 			os.Exit(1)
 		}
 		defer f.Close()
 
 		for stream.Receive() {
 			if _, err := f.Write(stream.Msg().GetChunk()); err != nil {
-				logger.Error("Failed to write to local zip file", logging.ErrorAttr(err))
+				logger.Error("Failed to write to local zip file", "path", fileName, logging.ErrorAttr(err))
 				os.Exit(1)
 			}
 		}
@@ -310,12 +317,16 @@ func Run(args Args, logger *slog.Logger) {
 			logger.Error("Stream error during export", logging.ErrorAttr(err))
 			os.Exit(1)
 		}
-		logger.Info("Data exported successfully to swarun-data.zip")
+		logger.Info("Data exported successfully", "path", fileName)
 
 	case "import-data":
-		f, err := os.Open("swarun-data.zip")
+		fileName := "swarun-data.zip"
+		if args.FilePath != "" {
+			fileName = args.FilePath
+		}
+		f, err := os.Open(fileName)
 		if err != nil {
-			logger.Error("Failed to open local zip file (swarun-data.zip)", logging.ErrorAttr(err))
+			logger.Error("Failed to open local zip file", "path", fileName, logging.ErrorAttr(err))
 			os.Exit(1)
 		}
 		defer f.Close()

@@ -148,26 +148,27 @@ func (c *Controller) restoreStatsFromStorage(testRunID string, tr *TestRun) {
 			}
 			tr.PathMetrics.mu.Lock()
 			tr.PathMetrics.Metrics[path] = &PathStats{
-				Success:      int64(stats["success"]),
-				Failure:      int64(stats["failure"]),
-				TotalLatency: time.Duration(stats["avg_latency"] * (stats["success"] + stats["failure"]) * float64(time.Millisecond)),
-				MinLatencyMs: stats["min_latency"],
-				MaxLatencyMs: stats["max_latency"],
+				Method:       stats.Method,
+				Success:      int64(stats.Success),
+				Failure:      int64(stats.Failure),
+				TotalLatency: time.Duration(stats.AvgLatencyMs * (stats.Success + stats.Failure) * float64(time.Millisecond)),
+				MinLatencyMs: stats.MinLatencyMs,
+				MaxLatencyMs: stats.MaxLatencyMs,
 			}
 			tr.PathMetrics.mu.Unlock()
 
 			if path == "scenario_iteration" {
-				tr.TotalIterations = int64(stats["success"])
+				tr.TotalIterations = int64(stats.Success)
 			} else {
-				tr.TotalSuccess += int64(stats["success"])
-				tr.TotalFailure += int64(stats["failure"])
-				tr.TotalLatency += time.Duration(stats["avg_latency"] * (stats["success"] + stats["failure"]) * float64(time.Millisecond))
-				tr.LatencyCount += int64(stats["success"] + stats["failure"])
-				if tr.MaxLatencyMs < stats["max_latency"] {
-					tr.MaxLatencyMs = stats["max_latency"]
+				tr.TotalSuccess += int64(stats.Success)
+				tr.TotalFailure += int64(stats.Failure)
+				tr.TotalLatency += time.Duration(stats.AvgLatencyMs * (stats.Success + stats.Failure) * float64(time.Millisecond))
+				tr.LatencyCount += int64(stats.Success + stats.Failure)
+				if tr.MaxLatencyMs < stats.MaxLatencyMs {
+					tr.MaxLatencyMs = stats.MaxLatencyMs
 				}
-				if tr.MinLatencyMs == 0 || tr.MinLatencyMs > stats["min_latency"] {
-					tr.MinLatencyMs = stats["min_latency"]
+				if tr.MinLatencyMs == 0 || tr.MinLatencyMs > stats.MinLatencyMs {
+					tr.MinLatencyMs = stats.MinLatencyMs
 				}
 			}
 		}
@@ -385,11 +386,12 @@ func (c *Controller) GetTestStatus(
 
 				for path, stats := range pathStats {
 					pm := &swarunv1.PathMetrics{
-						TotalSuccess: int64(stats["success"]),
-						TotalFailure: int64(stats["failure"]),
-						AvgLatencyMs: stats["avg_latency"],
-						MaxLatencyMs: stats["max_latency"],
-						MinLatencyMs: stats["min_latency"],
+						Method:       stats.Method,
+						TotalSuccess: int64(stats.Success),
+						TotalFailure: int64(stats.Failure),
+						AvgLatencyMs: stats.AvgLatencyMs,
+						MaxLatencyMs: stats.MaxLatencyMs,
+						MinLatencyMs: stats.MinLatencyMs,
 					}
 					if duration > 0 {
 						pm.Rps = float64(pm.TotalSuccess+pm.TotalFailure) / duration.Seconds()
@@ -429,7 +431,7 @@ func (c *Controller) GetTestStatus(
 					} else {
 						tr.TotalSuccess += pm.TotalSuccess
 						tr.TotalFailure += pm.TotalFailure
-						totalLatencyMs += stats["avg_latency"] * float64(pm.TotalSuccess+pm.TotalFailure)
+						totalLatencyMs += stats.AvgLatencyMs * float64(pm.TotalSuccess+pm.TotalFailure)
 						latencyCount += (pm.TotalSuccess + pm.TotalFailure)
 						if tr.MaxLatencyMs < pm.MaxLatencyMs {
 							tr.MaxLatencyMs = pm.MaxLatencyMs
@@ -544,6 +546,7 @@ func (c *Controller) GetTestStatus(
 				continue
 			}
 			pm := &swarunv1.PathMetrics{
+				Method:       stats.Method,
 				TotalSuccess: stats.Success,
 				TotalFailure: stats.Failure,
 			}
@@ -880,11 +883,12 @@ func (c *Controller) sendMetrics(
 				if path == "" {
 					path = "unknown"
 				}
+				method := m.GetLabels()["method"]
 
 				if tr.PathMetrics == nil {
 					tr.PathMetrics = NewPathMetricsMap()
 				}
-				tr.PathMetrics.Add(path, m.GetName(), m.GetValue())
+				tr.PathMetrics.Add(path, method, m.GetName(), m.GetValue())
 
 				if path == "scenario_iteration" {
 					if m.GetName() == "success" {
@@ -962,6 +966,7 @@ func (c *Controller) sendMetrics(
 				Value:     m.GetValue(),
 				WorkerID:  batch.GetWorkerId(),
 				Path:      m.GetLabels()["path"],
+				Method:    m.GetLabels()["method"],
 				RequestID: m.GetLabels()["request_id"],
 			})
 

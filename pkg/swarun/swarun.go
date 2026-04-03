@@ -52,8 +52,8 @@ var (
 )
 
 const (
-	queueSize     = 20000
-	batchSize     = 100
+	queueSize     = 100000
+	batchSize     = 1000
 	batchInterval = 100 * time.Millisecond
 )
 
@@ -411,6 +411,7 @@ func Do(req *http.Request) (*http.Response, error) {
 
 	labels := map[string]string{
 		"path":       label,
+		"method":     req.Method,
 		"request_id": reqIDStr,
 	}
 

@@ -56,6 +56,9 @@ cdk-diff:
 cdk-deploy:
 	cd cdk && pnpm cdk-deploy CondorSwarunCdkStack
 
+deploy:
+	./script/deploy-ecs.sh
+
 clean:
 	rm -rf tmp/
 	rm -rf web/dist/

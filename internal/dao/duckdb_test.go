@@ -13,7 +13,7 @@ func TestDuckDBDAO(t *testing.T) {
 	testRunID := "test-run-1"
 	defer os.RemoveAll("testdata")
 
-	dao, err := NewDuckDBDAO(dataDir, testRunID)
+	dao, err := NewDuckDBDAO(dataDir, testRunID, true)
 	if err != nil {
 		t.Fatalf("failed to create DuckDB DAO: %v", err)
 	}
@@ -193,31 +193,74 @@ func TestDuckDBDAO(t *testing.T) {
 		}
 
 		if stats, ok := pathStats2["unknown"]; ok {
-			if stats["success"] != 1.0 {
-				t.Errorf("expected unknown success 1.0, got %v", stats["success"])
+			if stats.Success != 1.0 {
+				t.Errorf("expected unknown success 1.0, got %v", stats.Success)
 			}
 		} else {
 			t.Errorf("unknown not found in pathStats2: %+v", pathStats2)
 		}
 
 		if stats, ok := pathStats["/api/v1"]; ok {
-			if stats["success"] != 1.0 {
-				t.Errorf("expected /api/v1 success 1.0, got %v", stats["success"])
+			if stats.Success != 1.0 {
+				t.Errorf("expected /api/v1 success 1.0, got %v", stats.Success)
 			}
-			if stats["failure"] != 1.0 {
-				t.Errorf("expected /api/v1 failure 1.0, got %v", stats["failure"])
+			if stats.Failure != 1.0 {
+				t.Errorf("expected /api/v1 failure 1.0, got %v", stats.Failure)
 			}
 		} else {
 			t.Errorf("/api/v1 not found in pathStats")
 		}
 
 		if stats, ok := pathStats["/api/v2"]; ok {
-			if stats["success"] != 1.0 {
-				t.Errorf("expected /api/v2 success 1.0, got %v", stats["success"])
+			if stats.Success != 1.0 {
+				t.Errorf("expected /api/v2 success 1.0, got %v", stats.Success)
 			}
 		} else {
 			t.Errorf("/api/v2 not found in pathStats")
 		}
+
+		t.Run("SelectWithMethod", func(t *testing.T) {
+			methodRows := []Row{
+				{
+					Metric:    "success",
+					Value:     1.0,
+					Timestamp: now,
+					Method:    "GET",
+					Path:      "/api/method",
+				},
+				{
+					Metric:    "latency_ms",
+					Value:     100,
+					Timestamp: now,
+					Method:    "POST",
+					Path:      "/api/method",
+				},
+			}
+			if err := dao.InsertRows(ctx, methodRows); err != nil {
+				t.Fatalf("failed to insert method rows: %v", err)
+			}
+
+			_, pathStats, err := dao.SelectStats(ctx, nil, now.Add(-time.Second), now.Add(time.Second))
+			if err != nil {
+				t.Fatalf("failed to select stats: %v", err)
+			}
+
+			if stats, ok := pathStats["/api/method"]; ok {
+				// Method は ANY_VALUE なので、GET か POST のどちらかが入るはず
+				if stats.Method != "GET" && stats.Method != "POST" {
+					t.Errorf("expected method GET or POST, got %v", stats.Method)
+				}
+				if stats.Success != 1.0 {
+					t.Errorf("expected success 1.0, got %f", stats.Success)
+				}
+				if stats.AvgLatencyMs != 100 {
+					t.Errorf("expected avg latency 100, got %f", stats.AvgLatencyMs)
+				}
+			} else {
+				t.Errorf("/api/method not found in pathStats")
+			}
+		})
+
 		t.Run("SelectWithWorkerID", func(t *testing.T) {
 			workerRows := []Row{
 				{

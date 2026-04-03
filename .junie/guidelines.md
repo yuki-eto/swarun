@@ -203,6 +203,7 @@ sc := swarun.ScenarioFunc(func(ctx context.Context) error {
     - **Web Dashboard Development**: When making changes to the web dashboard, ensure there are no linting or formatting errors by running:
       ```bash
       make lint-web
+      make format-web
       ```
 - **Ramp-up and Stages**: `swarun` supports flexible ramp-up strategies specified at test execution time. These are not part of the persistent configuration (YAML/Env).
 

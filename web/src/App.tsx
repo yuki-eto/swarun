@@ -6,16 +6,16 @@ import Results from "./pages/Results";
 import TestRunDetail from "./pages/TestRunDetail";
 
 function App() {
-	return (
-		<Routes>
-			<Route path="/" element={<Layout />}>
-				<Route index element={<Dashboard />} />
-				<Route path="results" element={<Results />} />
-				<Route path="query" element={<Query />} />
-				<Route path="runs/:id" element={<TestRunDetail />} />
-			</Route>
-		</Routes>
-	);
+  return (
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        <Route index element={<Dashboard />} />
+        <Route path="results" element={<Results />} />
+        <Route path="query" element={<Query />} />
+        <Route path="runs/:id" element={<TestRunDetail />} />
+      </Route>
+    </Routes>
+  );
 }
 
 export default App;

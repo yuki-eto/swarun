@@ -34,6 +34,7 @@ type PathMetricsMap struct {
 }
 
 type PathStats struct {
+	Method       string        `json:"method"`
 	Success      int64         `json:"success"`
 	Failure      int64         `json:"failure"`
 	Latencies    []float64     `json:"-"`
@@ -50,14 +51,19 @@ func NewPathMetricsMap() *PathMetricsMap {
 	}
 }
 
-func (m *PathMetricsMap) Add(path, metric string, val float64) {
+func (m *PathMetricsMap) Add(path, method, metric string, val float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	stats, ok := m.Metrics[path]
 	if !ok {
-		stats = &PathStats{}
+		stats = &PathStats{
+			Method: method,
+		}
 		m.Metrics[path] = stats
+	}
+	if stats.Method == "" && method != "" {
+		stats.Method = method
 	}
 
 	switch metric {

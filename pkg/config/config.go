@@ -45,6 +45,7 @@ type Config struct {
 	InfluxDBBucket string `yaml:"influxdb_bucket"`
 	Platform       string `yaml:"platform"` // "local", "docker", "ecs" など
 	Timezone       string `yaml:"timezone"` // 例: "Asia/Tokyo"
+	Metadata       string `yaml:"metadata"` // シナリオに渡すデフォルトの metadata
 }
 
 // DefaultConfig はデフォルトの設定を返します。
@@ -201,5 +202,8 @@ func LoadEnv(cfg *Config) {
 	}
 	if v := os.Getenv("SWARUN_TIMEZONE"); v != "" {
 		cfg.Timezone = v
+	}
+	if v := os.Getenv("SWARUN_METADATA"); v != "" {
+		cfg.Metadata = v
 	}
 }

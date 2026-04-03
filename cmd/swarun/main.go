@@ -41,6 +41,8 @@ func main() {
 		workerID        string
 		query           string
 		queryFormat     string
+		metadata        string
+		filePath        string
 	)
 	flag.IntVar(&concurrency, "concurrency", 10, "Concurrency")
 	flag.IntVar(&workerCount, "worker-count", 1, "Number of workers")
@@ -69,6 +71,8 @@ func main() {
 	flag.StringVar(&workerID, "worker-id", "", "Worker ID for teardown-worker")
 	flag.StringVar(&query, "query", "", "SQL query for DuckDB")
 	flag.StringVar(&queryFormat, "query-format", "text", "Output format (json, csv, text)")
+	flag.StringVar(&metadata, "metadata", "", "Metadata for scenario (JSON string, etc.)")
+	flag.StringVar(&filePath, "file", "", "File path for import/export data (default: swarun-data.zip)")
 	flag.Parse()
 
 	cfg, err := config.Load(nil)
@@ -102,6 +106,8 @@ func main() {
 		WorkerID:        workerID,
 		Query:           query,
 		QueryFormat:     queryFormat,
+		Metadata:        metadata,
+		FilePath:        filePath,
 	}
 
 	if labels != "" {

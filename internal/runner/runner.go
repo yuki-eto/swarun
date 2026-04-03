@@ -66,7 +66,14 @@ func (r *Runner) Run(ctx context.Context) {
 	if err := swarun.Flush(ctx); err != nil {
 		r.logger.Error("Failed to flush metrics in runner", logging.ErrorAttr(err))
 	}
-	r.results <- Result{Success: true, Latency: 0} // 特殊なメトリクスとして test_finished を送るためのダミー
+	// 結果チャネルを閉じるのではなく、明示的に終了を通知するなどの処理が必要かもしれないが、
+	// 現状の Worker 側の実装に合わせて終了信号を送る
+	// results チャネルのバッファが小さいとデッドロックする可能性があるので注意
+	select {
+	case r.results <- Result{Success: true, Latency: 0}:
+	default:
+		r.logger.Warn("Failed to send finish signal, result channel is full")
+	}
 }
 
 func (r *Runner) runLinearRampUp(ctx context.Context) {
@@ -186,8 +193,9 @@ func (r *Runner) worker(ctx context.Context) {
 		default:
 			// シナリオ実行用の環境変数は不要（同じプロセス内で動くため）
 			// 必要なら Config 経由で渡すか、pkg/swarun/swarun.go で初期化する
+			metadata := r.req.GetMetadata()
 			start := time.Now()
-			err := r.scenario.Run(ctx)
+			err := r.scenario.Run(ctx, metadata)
 			latency := time.Since(start)
 
 			// Check if the error is due to context cancellation/timeout

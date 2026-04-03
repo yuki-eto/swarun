@@ -3,6 +3,7 @@ package dao
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/marcboeker/go-duckdb"
+	"github.com/marcboeker/go-duckdb"
 )
 
 type duckDBDAO struct {
@@ -55,11 +56,13 @@ func NewDuckDBDAO(dataDir, testRunID string, inMemory bool) (MetricsDAO, error) 
 			metric TEXT,
 			value DOUBLE,
 			path TEXT,
+			method TEXT,
 			worker_id TEXT,
 			request_id TEXT,
 			labels JSON
 		);
 		CREATE INDEX IF NOT EXISTS idx_path ON metrics (path);
+		CREATE INDEX IF NOT EXISTS idx_method ON metrics (method);
 		CREATE INDEX IF NOT EXISTS idx_worker_id ON metrics (worker_id);
 		CREATE INDEX IF NOT EXISTS idx_request_id ON metrics (request_id);
 		CREATE INDEX IF NOT EXISTS idx_timestamp ON metrics (timestamp);
@@ -77,29 +80,51 @@ func NewDuckDBDAO(dataDir, testRunID string, inMemory bool) (MetricsDAO, error) 
 }
 
 func (d *duckDBDAO) InsertRows(ctx context.Context, rows []Row) error {
-	tx, err := d.db.BeginTx(ctx, nil)
+	if len(rows) == 0 {
+		return nil
+	}
+
+	conn, err := d.db.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer conn.Close()
 
-	stmt, err := tx.PrepareContext(ctx, "INSERT INTO metrics (timestamp, metric, value, path, worker_id, request_id, labels) VALUES (?, ?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, r := range rows {
-		labelsJSON, err := json.Marshal(r.Labels)
+	return conn.Raw(func(driverConn any) error {
+		var appender *duckdb.Appender
+		var err error
+		if dc, ok := driverConn.(driver.Conn); ok {
+			appender, err = duckdb.NewAppenderFromConn(dc, "", "metrics")
+		} else {
+			return fmt.Errorf("driver connection does not implement driver.Conn")
+		}
 		if err != nil {
 			return err
 		}
-		if _, err := stmt.ExecContext(ctx, r.Timestamp, r.Metric, r.Value, r.Path, r.WorkerID, r.RequestID, string(labelsJSON)); err != nil {
-			return err
-		}
-	}
+		defer appender.Close()
 
-	return tx.Commit()
+		for _, r := range rows {
+			labelsJSON, err := json.Marshal(r.Labels)
+			if err != nil {
+				return err
+			}
+
+			if err := appender.AppendRow(
+				r.Timestamp,
+				r.Metric,
+				r.Value,
+				r.Path,
+				r.Method,
+				r.WorkerID,
+				r.RequestID,
+				string(labelsJSON),
+			); err != nil {
+				return err
+			}
+		}
+
+		return appender.Flush()
+	})
 }
 
 func (d *duckDBDAO) SelectRows(ctx context.Context, metric string, labels map[string]string, start, end time.Time, aggregateFunc string, aggregateWindow time.Duration) ([]Row, error) {
@@ -218,7 +243,7 @@ func (d *duckDBDAO) SelectRows(ctx context.Context, metric string, labels map[st
 	return result, nil
 }
 
-func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, start, end time.Time) (map[string]float64, map[string]map[string]float64, error) {
+func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, start, end time.Time) (map[string]float64, map[string]PathStats, error) {
 	// 全体の統計を取得
 	overallQuery := `
 		SELECT 
@@ -237,6 +262,9 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	for k, v := range labels {
 		if k == "path" {
 			overallQuery += " AND path = ?"
+			overallArgs = append(overallArgs, v)
+		} else if k == "method" {
+			overallQuery += " AND method = ?"
 			overallArgs = append(overallArgs, v)
 		} else if k == "worker_id" {
 			overallQuery += " AND worker_id = ?"
@@ -286,6 +314,7 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 				THEN 'unknown' 
 				ELSE path 
 			END as extracted_path,
+			ANY_VALUE(method) as extracted_method,
 			metric,
 			SUM(value) as total,
 			AVG(value) as avg,
@@ -300,6 +329,9 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	for k, v := range labels {
 		if k == "path" {
 			pathQuery += " AND path = ?"
+			pathArgs = append(pathArgs, v)
+		} else if k == "method" {
+			pathQuery += " AND method = ?"
 			pathArgs = append(pathArgs, v)
 		} else if k == "worker_id" {
 			pathQuery += " AND worker_id = ?"
@@ -320,26 +352,28 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	}
 	defer pathRows.Close()
 
-	pathMetrics := make(map[string]map[string]float64)
+	pathMetrics := make(map[string]PathStats)
 	for pathRows.Next() {
-		var path, metric string
+		var path, method, metric string
 		var total, avg, max, min float64
-		if err := pathRows.Scan(&path, &metric, &total, &avg, &max, &min); err != nil {
+		if err := pathRows.Scan(&path, &method, &metric, &total, &avg, &max, &min); err != nil {
 			return nil, nil, err
 		}
-		if _, ok := pathMetrics[path]; !ok {
-			pathMetrics[path] = make(map[string]float64)
-		}
+
+		stats := pathMetrics[path]
+		stats.Method = method
+
 		switch metric {
 		case "success":
-			pathMetrics[path]["success"] = total
+			stats.Success = total
 		case "failure":
-			pathMetrics[path]["failure"] = total
+			stats.Failure = total
 		case "latency_ms":
-			pathMetrics[path]["avg_latency"] = avg
-			pathMetrics[path]["max_latency"] = max
-			pathMetrics[path]["min_latency"] = min
+			stats.AvgLatencyMs = avg
+			stats.MaxLatencyMs = max
+			stats.MinLatencyMs = min
 		}
+		pathMetrics[path] = stats
 	}
 
 	return overallStats, pathMetrics, nil

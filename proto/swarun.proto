@@ -208,6 +208,7 @@ message PathMetrics {
   double p90_latency_ms = 6;
   double p95_latency_ms = 7;
   double rps = 8;
+  string method = 9;
 }
 
 message GetMetricsRequest {
@@ -305,6 +306,8 @@ message StartTestRequest {
   google.protobuf.Duration ramp_up_duration = 6;
   // 段階的な並列数（concurrency）の調整スケジュール
   repeated RampingStage stages = 7;
+  // シナリオに渡す動的なパラメータ（文字列または bytes）
+  string metadata = 8;
 }
 
 message RampingStage {

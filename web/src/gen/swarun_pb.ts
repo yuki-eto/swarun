@@ -1075,6 +1075,11 @@ export class PathMetrics extends Message<PathMetrics> {
    */
   rps = 0;
 
+  /**
+   * @generated from field: string method = 9;
+   */
+  method = "";
+
   constructor(data?: PartialMessage<PathMetrics>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1091,6 +1096,7 @@ export class PathMetrics extends Message<PathMetrics> {
     { no: 6, name: "p90_latency_ms", kind: "scalar", T: 1 /* ScalarType.DOUBLE */ },
     { no: 7, name: "p95_latency_ms", kind: "scalar", T: 1 /* ScalarType.DOUBLE */ },
     { no: 8, name: "rps", kind: "scalar", T: 1 /* ScalarType.DOUBLE */ },
+    { no: 9, name: "method", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): PathMetrics {
@@ -1838,6 +1844,13 @@ export class StartTestRequest extends Message<StartTestRequest> {
    */
   stages: RampingStage[] = [];
 
+  /**
+   * シナリオに渡す動的なパラメータ（文字列または bytes）
+   *
+   * @generated from field: string metadata = 8;
+   */
+  metadata = "";
+
   constructor(data?: PartialMessage<StartTestRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1853,6 +1866,7 @@ export class StartTestRequest extends Message<StartTestRequest> {
     { no: 5, name: "max_duration", kind: "message", T: Duration },
     { no: 6, name: "ramp_up_duration", kind: "message", T: Duration },
     { no: 7, name: "stages", kind: "message", T: RampingStage, repeated: true },
+    { no: 8, name: "metadata", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StartTestRequest {

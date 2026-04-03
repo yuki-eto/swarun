@@ -49,12 +49,12 @@ func TestController_PathMetrics_Percentiles(t *testing.T) {
 					{
 						Name:   "success",
 						Value:  1,
-						Labels: map[string]string{"path": path},
+						Labels: map[string]string{"path": path, "method": "GET"},
 					},
 					{
 						Name:   "latency_ms",
 						Value:  lat,
-						Labels: map[string]string{"path": path},
+						Labels: map[string]string{"path": path, "method": "GET"},
 					},
 				},
 			}
@@ -73,6 +73,9 @@ func TestController_PathMetrics_Percentiles(t *testing.T) {
 	pmA := resp.Msg.PathMetrics["/api/a"]
 	if pmA == nil {
 		t.Fatal("path metrics for /api/a not found")
+	}
+	if pmA.Method != "GET" {
+		t.Errorf("expected /api/a method to be GET, got %s", pmA.Method)
 	}
 	if pmA.P90LatencyMs != 30 {
 		t.Errorf("expected /api/a P90 to be 30, got %f", pmA.P90LatencyMs)

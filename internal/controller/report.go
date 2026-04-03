@@ -31,14 +31,15 @@ const reportTemplate = `
         .chart-card { background: #fff; padding: 16px; border-radius: 4px; box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2), 0px 1px 1px 0px rgba(0,0,0,0.14), 0px 1px 3px 0px rgba(0,0,0,0.12); }
         .chart-card h2 { margin: 0 0 16px 0; font-size: 1.25rem; font-weight: 500; }
         .chart-container { height: 400px; position: relative; }
-        .table-card { background: #fff; padding: 16px; border-radius: 4px; box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2), 0px 1px 1px 0px rgba(0,0,0,0.14), 0px 1px 3px 0px rgba(0,0,0,0.12); margin-top: 24px; }
+        .table-card { background: #fff; padding: 16px; border-radius: 4px; box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2), 0px 1px 1px 0px rgba(0,0,0,0.14), 0px 1px 3px 0px rgba(0,0,0,0.12); margin-top: 24px; overflow-x: auto; }
         .table-card h2 { margin: 0 0 16px 0; font-size: 1.25rem; font-weight: 500; }
-        table { width: 100%; border-collapse: collapse; }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
         th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid rgba(224, 224, 224, 1); }
-        th { color: rgba(0, 0, 0, 0.87); font-weight: 500; font-size: 0.875rem; background-color: #fff; }
+        th { color: rgba(0, 0, 0, 0.87); font-weight: 500; font-size: 0.875rem; background-color: #fff; position: sticky; top: 0; }
         td { color: rgba(0, 0, 0, 0.87); font-size: 0.875rem; }
         tr:hover { background-color: rgba(0, 0, 0, 0.04); }
         .align-right { text-align: right; }
+        .path-cell { word-break: break-all; min-width: 300px; max-width: 500px; }
     </style>
 </head>
 <body>
@@ -111,6 +112,7 @@ const reportTemplate = `
         <table>
             <thead>
                 <tr>
+                    <th>Method</th>
                     <th>Path</th>
                     <th class="align-right">Success</th>
                     <th class="align-right">Failure</th>
@@ -126,7 +128,8 @@ const reportTemplate = `
                 {{range $path, $m := .Status.PathMetrics}}
                 {{if ne $path "scenario_iteration"}}
                 <tr>
-                    <td>{{$path}}</td>
+                    <td>{{$m.Method}}</td>
+                    <td class="path-cell">{{$path}}</td>
                     <td class="align-right">{{$m.TotalSuccess}}</td>
                     <td class="align-right">{{$m.TotalFailure}}</td>
                     <td class="align-right">{{printf "%.2f" $m.Rps}}</td>

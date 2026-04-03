@@ -154,13 +154,14 @@ func (d *influxDBDAO) SelectRows(ctx context.Context, metric string, labels map[
 			Value:     val,
 			WorkerID:  fmt.Sprintf("%v", r.ValueByKey("worker_id")),
 			Path:      fmt.Sprintf("%v", r.ValueByKey("path")),
+			Method:    fmt.Sprintf("%v", r.ValueByKey("method")),
 			RequestID: fmt.Sprintf("%v", r.ValueByKey("request_id")),
 			Labels:    make(map[string]string),
 		}
 
 		// その他のラベルを詰め直す
 		for k, v := range r.Values() {
-			if k != "worker_id" && k != "path" && k != "request_id" && !strings.HasPrefix(k, "_") && k != "test_run_id" {
+			if k != "worker_id" && k != "path" && k != "method" && k != "request_id" && !strings.HasPrefix(k, "_") && k != "test_run_id" {
 				row.Labels[k] = fmt.Sprintf("%v", v)
 			}
 		}
@@ -174,9 +175,9 @@ func (d *influxDBDAO) SelectRows(ctx context.Context, metric string, labels map[
 	return rows, nil
 }
 
-func (d *influxDBDAO) SelectStats(ctx context.Context, labels map[string]string, start, end time.Time) (map[string]float64, map[string]map[string]float64, error) {
+func (d *influxDBDAO) SelectStats(ctx context.Context, labels map[string]string, start, end time.Time) (map[string]float64, map[string]PathStats, error) {
 	// InfluxDB では未実装（とりあえず空で返す）
-	return make(map[string]float64), make(map[string]map[string]float64), nil
+	return make(map[string]float64), make(map[string]PathStats), nil
 }
 
 func (d *influxDBDAO) QueryRaw(ctx context.Context, query string) ([]map[string]any, []string, error) {

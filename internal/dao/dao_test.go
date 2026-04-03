@@ -12,14 +12,14 @@ func TestDuckDBPerTestID(t *testing.T) {
 	defer os.RemoveAll("testdata")
 
 	testID1 := "test-run-1"
-	dao1, err := NewDuckDBDAO(dataDir, testID1)
+	dao1, err := NewDuckDBDAO(dataDir, testID1, true)
 	if err != nil {
 		t.Fatalf("failed to create dao1: %v", err)
 	}
 	defer dao1.Close()
 
 	testID2 := "test-run-2"
-	dao2, err := NewDuckDBDAO(dataDir, testID2)
+	dao2, err := NewDuckDBDAO(dataDir, testID2, true)
 	if err != nil {
 		t.Fatalf("failed to create dao2: %v", err)
 	}
