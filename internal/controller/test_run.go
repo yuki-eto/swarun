@@ -26,6 +26,7 @@ type TestRun struct {
 	Latencies           []float64       `json:"-"`
 	LatenciesMu         sync.RWMutex    `json:"-"`
 	PathMetrics         *PathMetricsMap `json:"path_metrics"`
+	AutoExportS3        bool            `json:"auto_export_s3"`
 }
 
 type PathMetricsMap struct {

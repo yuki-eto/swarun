@@ -14,6 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"encoding/json"
+	"html/template"
+
 	"connectrpc.com/connect"
 	swarunv1 "github.com/yuki-eto/swarun/gen/proto/v1"
 	"github.com/yuki-eto/swarun/gen/proto/v1/swarunv1connect"
@@ -158,12 +161,27 @@ func setupControllerMux(c *controller.Controller, logger *slog.Logger) (*http.Se
 		logger.Error("Failed to access embedded static files", logging.ErrorAttr(err))
 	} else {
 		fileServer := http.FileServer(http.FS(distFS))
+		indexTmpl, err := template.ParseFS(distFS, "index.html")
+		if err != nil {
+			logger.Error("Failed to parse index.html template", logging.ErrorAttr(err))
+		}
+
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// gRPC パス以外でファイルが存在しない場合は index.html を返す (SPA routing)
 			if !strings.HasPrefix(r.URL.Path, path) {
 				f, err := distFS.Open(strings.TrimPrefix(r.URL.Path, "/"))
 				if err != nil {
 					// ファイルが見つからない場合は index.html を返す
+					if indexTmpl != nil {
+						configJSON, _ := json.Marshal(map[string]any{
+							"s3Enabled": c.IsS3Enabled(),
+						})
+						w.Header().Set("Content-Type", "text/html; charset=utf-8")
+						indexTmpl.Execute(w, map[string]any{
+							"Config": template.JS(configJSON),
+						})
+						return
+					}
 					r.URL.Path = "/"
 				} else {
 					f.Close()

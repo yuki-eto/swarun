@@ -32,6 +32,7 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_URL=http://controller:8080
+      - VITE_S3_ENABLED=false
     depends_on:
       - controller
     networks:

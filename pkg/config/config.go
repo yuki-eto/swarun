@@ -24,7 +24,7 @@ type Config struct {
 	LogLevel           string        `yaml:"log_level"`
 	DataDir            string        `yaml:"data_dir"`
 	DuckDBInMemoryMode bool          `yaml:"duckdb_in_memory_mode"`
-	S3                 S3Config      `yaml:"s3"`
+	S3                 *S3Config     `yaml:"s3,omitempty"`
 	WorkerCount        int           `yaml:"worker_count"`
 	DockerImage        string        `yaml:"docker_image"`
 	ECSRegion          string        `yaml:"ecs_region"`
@@ -56,15 +56,12 @@ func DefaultConfig() *Config {
 		LogLevel:           "info",
 		DataDir:            "data",
 		DuckDBInMemoryMode: false,
-		S3: S3Config{
-			Prefix: "swarun-metrics",
-		},
-		WorkerCount:    1,
-		DockerImage:    "swarun:latest",
-		Concurrency:    1,
-		MetricsBackend: "duckdb",
-		Platform:       "local",
-		Timezone:       "Local",
+		WorkerCount:        1,
+		DockerImage:        "swarun:latest",
+		Concurrency:        1,
+		MetricsBackend:     "duckdb",
+		Platform:           "local",
+		Timezone:           "Local",
 	}
 }
 
@@ -128,6 +125,9 @@ func LoadEnv(cfg *Config) {
 		}
 	}
 	if v := os.Getenv("SWARUN_S3_BUCKET"); v != "" {
+		if cfg.S3 == nil {
+			cfg.S3 = &S3Config{}
+		}
 		cfg.S3.Bucket = v
 	}
 	if v := os.Getenv("SWARUN_S3_REGION"); v != "" {

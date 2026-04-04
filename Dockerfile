@@ -30,7 +30,7 @@ COPY --from=web-builder /app/web/dist/ pkg/cli/web/dist/
 
 # DuckDB を使用するため CGO を有効にする
 RUN CGO_ENABLED=1 GOOS=linux go build -o /usr/local/bin/swarun ./cmd/swarun/main.go
-RUN CGO_ENABLED=1 GOOS=linux go build -o /app/tmp/swarun-condor ./scenarios/condor/main.go
+RUN CGO_ENABLED=1 GOOS=linux go build -o /app/tmp/swarun-example ./examples/simple-get/main.go
 
 # Stage 3: Runtime
 FROM debian:trixie-slim
@@ -41,9 +41,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 COPY --from=go-builder /usr/local/bin/swarun /usr/local/bin/swarun
-COPY --from=go-builder /app/tmp/swarun-condor /usr/local/bin/swarun-condor
+COPY --from=go-builder /app/tmp/swarun-example /usr/local/bin/swarun-example
 
 # ランタイムに必要なディレクトリ
 RUN mkdir -p /app/data
 
-ENTRYPOINT ["swarun-condor"]
+ENTRYPOINT ["swarun-example"]

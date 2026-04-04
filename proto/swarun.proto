@@ -53,6 +53,9 @@ service ControllerService {
   // ListTestRuns は過去のテスト実行ID一覧を取得します。
   rpc ListTestRuns(ListTestRunsRequest) returns (ListTestRunsResponse);
 
+  // ListS3TestRuns は S3 上にあるテスト実行一覧を取得します。
+  rpc ListS3TestRuns(ListS3TestRunsRequest) returns (ListS3TestRunsResponse);
+
   // ExportReport は指定されたテスト実行のレポートを HTML 形式で取得します。
   rpc ExportReport(ExportReportRequest) returns (ExportReportResponse);
 
@@ -97,6 +100,16 @@ message ListTestRunsRequest {}
 
 message ListTestRunsResponse {
   repeated TestRunSummary test_runs = 1;
+}
+
+message ListS3TestRunsRequest {
+  string s3_bucket = 1;
+  string s3_prefix = 2;
+  string s3_region = 3;
+}
+
+message ListS3TestRunsResponse {
+  repeated string test_run_ids = 1;
 }
 
 message TestRunSummary {
@@ -308,6 +321,7 @@ message StartTestRequest {
   repeated RampingStage stages = 7;
   // シナリオに渡す動的なパラメータ（文字列または bytes）
   string metadata = 8;
+  bool auto_export_s3 = 9;
 }
 
 message RampingStage {

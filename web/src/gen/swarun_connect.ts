@@ -3,7 +3,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { ExportDataRequest, ExportDataResponse, ExportReportRequest, ExportReportResponse, ExportToS3Request, ExportToS3Response, GetMetricsRequest, GetMetricsResponse, GetTestStatusRequest, GetTestStatusResponse, HeartbeatRequest, HeartbeatResponse, ImportDataRequest, ImportDataResponse, ImportFromS3Request, ImportFromS3Response, ListTestRunsRequest, ListTestRunsResponse, ListWorkersRequest, ListWorkersResponse, MetricBatch, ProvisionWorkersRequest, ProvisionWorkersResponse, QueryMetricsRequest, QueryMetricsResponse, RegisterWorkerRequest, RegisterWorkerResponse, RunTestRequest, RunTestResponse, SendMetricsResponse, StartTestRequest, StartTestResponse, StopTestRequest, StopTestResponse, TeardownWorkerRequest, TeardownWorkerResponse, TeardownWorkersRequest, TeardownWorkersResponse } from "./swarun_pb.js";
+import { ExportDataRequest, ExportDataResponse, ExportReportRequest, ExportReportResponse, ExportToS3Request, ExportToS3Response, GetMetricsRequest, GetMetricsResponse, GetTestStatusRequest, GetTestStatusResponse, HeartbeatRequest, HeartbeatResponse, ImportDataRequest, ImportDataResponse, ImportFromS3Request, ImportFromS3Response, ListS3TestRunsRequest, ListS3TestRunsResponse, ListTestRunsRequest, ListTestRunsResponse, ListWorkersRequest, ListWorkersResponse, MetricBatch, ProvisionWorkersRequest, ProvisionWorkersResponse, QueryMetricsRequest, QueryMetricsResponse, RegisterWorkerRequest, RegisterWorkerResponse, RunTestRequest, RunTestResponse, SendMetricsResponse, StartTestRequest, StartTestResponse, StopTestRequest, StopTestResponse, TeardownWorkerRequest, TeardownWorkerResponse, TeardownWorkersRequest, TeardownWorkersResponse } from "./swarun_pb.js";
 import { MethodKind } from "@bufbuild/protobuf";
 
 /**
@@ -167,6 +167,17 @@ export const ControllerService = {
       name: "ListTestRuns",
       I: ListTestRunsRequest,
       O: ListTestRunsResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * ListS3TestRuns は S3 上にあるテスト実行一覧を取得します。
+     *
+     * @generated from rpc swarun.v1.ControllerService.ListS3TestRuns
+     */
+    listS3TestRuns: {
+      name: "ListS3TestRuns",
+      I: ListS3TestRunsRequest,
+      O: ListS3TestRunsResponse,
       kind: MethodKind.Unary,
     },
     /**

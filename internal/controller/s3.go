@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -179,5 +180,57 @@ func (c *Controller) ImportFromS3(
 	return connect.NewResponse(&swarunv1.ImportFromS3Response{
 		Success: true,
 		Message: "Data imported successfully",
+	}), nil
+}
+
+func (c *Controller) ListS3TestRuns(
+	ctx context.Context,
+	req *connect.Request[swarunv1.ListS3TestRunsRequest],
+) (*connect.Response[swarunv1.ListS3TestRunsResponse], error) {
+	bucket := req.Msg.GetS3Bucket()
+	if bucket == "" {
+		bucket = c.defaultS3Bucket
+	}
+	prefix := req.Msg.GetS3Prefix()
+	if prefix == "" {
+		prefix = c.defaultS3Prefix
+	}
+	region := req.Msg.GetS3Region()
+	if region == "" {
+		region = c.defaultS3Region
+	}
+
+	if bucket == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("s3_bucket is required"))
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to load AWS config: %w", err))
+	}
+
+	s3Client := s3.NewFromConfig(cfg)
+
+	input := &s3.ListObjectsV2Input{
+		Bucket:    aws.String(bucket),
+		Prefix:    aws.String(prefix + "/"),
+		Delimiter: aws.String("/"),
+	}
+
+	output, err := s3Client.ListObjectsV2(ctx, input)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to list S3 objects: %w", err))
+	}
+
+	var ids []string
+	for _, cp := range output.CommonPrefixes {
+		id := strings.Trim(strings.TrimPrefix(*cp.Prefix, prefix+"/"), "/")
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+
+	return connect.NewResponse(&swarunv1.ListS3TestRunsResponse{
+		TestRunIds: ids,
 	}), nil
 }

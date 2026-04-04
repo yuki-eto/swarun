@@ -29,6 +29,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Line } from "react-chartjs-2";
 import { useNavigate, useParams } from "react-router-dom";
 import { client } from "../api/client";
+import { getConfig } from "../config";
 import type { GetTestStatusResponse, MetricData } from "../gen/swarun_pb";
 import "chartjs-adapter-date-fns";
 
@@ -44,6 +45,7 @@ ChartJS.register(
 );
 
 const TestRunDetail = () => {
+  const config = getConfig();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [status, setStatus] = useState<GetTestStatusResponse | null>(null);
@@ -52,6 +54,7 @@ const TestRunDetail = () => {
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingS3, setExportingS3] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     if (!id) return null;
@@ -149,6 +152,24 @@ const TestRunDetail = () => {
       alert("Failed to export report");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportToS3 = async () => {
+    if (!id) return;
+    setExportingS3(true);
+    try {
+      const resp = await client.exportToS3({ testRunId: id });
+      if (resp.success) {
+        alert("Exported to S3 successfully");
+      } else {
+        alert(`Export failed: ${resp.message}`);
+      }
+    } catch (err) {
+      console.error("Failed to export to S3:", err);
+      alert("Failed to export to S3");
+    } finally {
+      setExportingS3(false);
     }
   };
 
@@ -357,6 +378,15 @@ const TestRunDetail = () => {
           >
             {exporting ? "Exporting..." : "Export Report"}
           </Button>
+          {config.s3Enabled && (
+            <Button
+              variant="outlined"
+              onClick={handleExportToS3}
+              disabled={exportingS3}
+            >
+              {exportingS3 ? "Exporting to S3..." : "Export to S3"}
+            </Button>
+          )}
           {status.isRunning && (
             <Button
               variant="contained"

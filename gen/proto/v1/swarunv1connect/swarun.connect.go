@@ -77,6 +77,9 @@ const (
 	// ControllerServiceListTestRunsProcedure is the fully-qualified name of the ControllerService's
 	// ListTestRuns RPC.
 	ControllerServiceListTestRunsProcedure = "/swarun.v1.ControllerService/ListTestRuns"
+	// ControllerServiceListS3TestRunsProcedure is the fully-qualified name of the ControllerService's
+	// ListS3TestRuns RPC.
+	ControllerServiceListS3TestRunsProcedure = "/swarun.v1.ControllerService/ListS3TestRuns"
 	// ControllerServiceExportReportProcedure is the fully-qualified name of the ControllerService's
 	// ExportReport RPC.
 	ControllerServiceExportReportProcedure = "/swarun.v1.ControllerService/ExportReport"
@@ -126,6 +129,8 @@ type ControllerServiceClient interface {
 	StopTest(context.Context, *connect.Request[v1.StopTestRequest]) (*connect.Response[v1.StopTestResponse], error)
 	// ListTestRuns は過去のテスト実行ID一覧を取得します。
 	ListTestRuns(context.Context, *connect.Request[v1.ListTestRunsRequest]) (*connect.Response[v1.ListTestRunsResponse], error)
+	// ListS3TestRuns は S3 上にあるテスト実行一覧を取得します。
+	ListS3TestRuns(context.Context, *connect.Request[v1.ListS3TestRunsRequest]) (*connect.Response[v1.ListS3TestRunsResponse], error)
 	// ExportReport は指定されたテスト実行のレポートを HTML 形式で取得します。
 	ExportReport(context.Context, *connect.Request[v1.ExportReportRequest]) (*connect.Response[v1.ExportReportResponse], error)
 	// ExportData は data_dir の内容を zip で固めてストリームで送信します。
@@ -231,6 +236,12 @@ func NewControllerServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(controllerServiceMethods.ByName("ListTestRuns")),
 			connect.WithClientOptions(opts...),
 		),
+		listS3TestRuns: connect.NewClient[v1.ListS3TestRunsRequest, v1.ListS3TestRunsResponse](
+			httpClient,
+			baseURL+ControllerServiceListS3TestRunsProcedure,
+			connect.WithSchema(controllerServiceMethods.ByName("ListS3TestRuns")),
+			connect.WithClientOptions(opts...),
+		),
 		exportReport: connect.NewClient[v1.ExportReportRequest, v1.ExportReportResponse](
 			httpClient,
 			baseURL+ControllerServiceExportReportProcedure,
@@ -274,6 +285,7 @@ type controllerServiceClient struct {
 	teardownWorker   *connect.Client[v1.TeardownWorkerRequest, v1.TeardownWorkerResponse]
 	stopTest         *connect.Client[v1.StopTestRequest, v1.StopTestResponse]
 	listTestRuns     *connect.Client[v1.ListTestRunsRequest, v1.ListTestRunsResponse]
+	listS3TestRuns   *connect.Client[v1.ListS3TestRunsRequest, v1.ListS3TestRunsResponse]
 	exportReport     *connect.Client[v1.ExportReportRequest, v1.ExportReportResponse]
 	exportData       *connect.Client[v1.ExportDataRequest, v1.ExportDataResponse]
 	importData       *connect.Client[v1.ImportDataRequest, v1.ImportDataResponse]
@@ -350,6 +362,11 @@ func (c *controllerServiceClient) ListTestRuns(ctx context.Context, req *connect
 	return c.listTestRuns.CallUnary(ctx, req)
 }
 
+// ListS3TestRuns calls swarun.v1.ControllerService.ListS3TestRuns.
+func (c *controllerServiceClient) ListS3TestRuns(ctx context.Context, req *connect.Request[v1.ListS3TestRunsRequest]) (*connect.Response[v1.ListS3TestRunsResponse], error) {
+	return c.listS3TestRuns.CallUnary(ctx, req)
+}
+
 // ExportReport calls swarun.v1.ControllerService.ExportReport.
 func (c *controllerServiceClient) ExportReport(ctx context.Context, req *connect.Request[v1.ExportReportRequest]) (*connect.Response[v1.ExportReportResponse], error) {
 	return c.exportReport.CallUnary(ctx, req)
@@ -401,6 +418,8 @@ type ControllerServiceHandler interface {
 	StopTest(context.Context, *connect.Request[v1.StopTestRequest]) (*connect.Response[v1.StopTestResponse], error)
 	// ListTestRuns は過去のテスト実行ID一覧を取得します。
 	ListTestRuns(context.Context, *connect.Request[v1.ListTestRunsRequest]) (*connect.Response[v1.ListTestRunsResponse], error)
+	// ListS3TestRuns は S3 上にあるテスト実行一覧を取得します。
+	ListS3TestRuns(context.Context, *connect.Request[v1.ListS3TestRunsRequest]) (*connect.Response[v1.ListS3TestRunsResponse], error)
 	// ExportReport は指定されたテスト実行のレポートを HTML 形式で取得します。
 	ExportReport(context.Context, *connect.Request[v1.ExportReportRequest]) (*connect.Response[v1.ExportReportResponse], error)
 	// ExportData は data_dir の内容を zip で固めてストリームで送信します。
@@ -502,6 +521,12 @@ func NewControllerServiceHandler(svc ControllerServiceHandler, opts ...connect.H
 		connect.WithSchema(controllerServiceMethods.ByName("ListTestRuns")),
 		connect.WithHandlerOptions(opts...),
 	)
+	controllerServiceListS3TestRunsHandler := connect.NewUnaryHandler(
+		ControllerServiceListS3TestRunsProcedure,
+		svc.ListS3TestRuns,
+		connect.WithSchema(controllerServiceMethods.ByName("ListS3TestRuns")),
+		connect.WithHandlerOptions(opts...),
+	)
 	controllerServiceExportReportHandler := connect.NewUnaryHandler(
 		ControllerServiceExportReportProcedure,
 		svc.ExportReport,
@@ -556,6 +581,8 @@ func NewControllerServiceHandler(svc ControllerServiceHandler, opts ...connect.H
 			controllerServiceStopTestHandler.ServeHTTP(w, r)
 		case ControllerServiceListTestRunsProcedure:
 			controllerServiceListTestRunsHandler.ServeHTTP(w, r)
+		case ControllerServiceListS3TestRunsProcedure:
+			controllerServiceListS3TestRunsHandler.ServeHTTP(w, r)
 		case ControllerServiceExportReportProcedure:
 			controllerServiceExportReportHandler.ServeHTTP(w, r)
 		case ControllerServiceExportDataProcedure:
@@ -627,6 +654,10 @@ func (UnimplementedControllerServiceHandler) StopTest(context.Context, *connect.
 
 func (UnimplementedControllerServiceHandler) ListTestRuns(context.Context, *connect.Request[v1.ListTestRunsRequest]) (*connect.Response[v1.ListTestRunsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("swarun.v1.ControllerService.ListTestRuns is not implemented"))
+}
+
+func (UnimplementedControllerServiceHandler) ListS3TestRuns(context.Context, *connect.Request[v1.ListS3TestRunsRequest]) (*connect.Response[v1.ListS3TestRunsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("swarun.v1.ControllerService.ListS3TestRuns is not implemented"))
 }
 
 func (UnimplementedControllerServiceHandler) ExportReport(context.Context, *connect.Request[v1.ExportReportRequest]) (*connect.Response[v1.ExportReportResponse], error) {

@@ -3,13 +3,19 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
+  FormControlLabel,
   Grid,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -23,9 +29,11 @@ import { useCallback, useEffect, useState } from "react";
 import { FiTrash2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { client } from "../api/client";
+import { getConfig } from "../config";
 import type { WorkerInfo } from "../gen/swarun_pb";
 
 const Dashboard = () => {
+  const config = getConfig();
   const [workers, setWorkers] = useState<WorkerInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
@@ -41,8 +49,21 @@ const Dashboard = () => {
   const [rampUp, setRampUp] = useState("0s");
   const [stages, setStages] = useState("");
   const [metadata, setMetadata] = useState("");
+  const [autoExportS3, setAutoExportS3] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // S3 related states
+  const [openS3Dialog, setOpenS3Dialog] = useState(false);
+  const [s3Mode, setS3Mode] = useState<"export" | "import">("export");
+  const [s3Bucket, setS3Bucket] = useState("");
+  const [s3Region, setS3Region] = useState("");
+  const [s3Prefix, setS3Prefix] = useState("");
+  const [s3TestRunIds, setS3TestRunIds] = useState<string[]>([]);
+  const [selectedS3Id, setSelectedS3Id] = useState("");
+  const [loadingS3Ids, setLoadingS3Ids] = useState(false);
+  const [processingS3, setProcessingS3] = useState(false);
+
   const navigate = useNavigate();
 
   const fetchData = useCallback(async () => {
@@ -173,6 +194,7 @@ const Dashboard = () => {
           },
           stages: rampingStages,
           metadata,
+          autoExportS3,
         },
       });
       if (resp.success) {
@@ -242,6 +264,57 @@ const Dashboard = () => {
     } finally {
       setImporting(false);
       event.target.value = "";
+    }
+  };
+
+  const loadS3TestRuns = async () => {
+    setLoadingS3Ids(true);
+    try {
+      const resp = await client.listS3TestRuns({
+        s3Bucket,
+        s3Region,
+        s3Prefix,
+      });
+      setS3TestRunIds(resp.testRunIds);
+    } catch (err) {
+      console.error("Failed to load S3 test runs:", err);
+      alert("Failed to load test runs from S3");
+    } finally {
+      setLoadingS3Ids(false);
+    }
+  };
+
+  const handleS3Action = async () => {
+    setProcessingS3(true);
+    try {
+      const req = {
+        s3Bucket,
+        s3Region,
+        s3Prefix,
+        testRunId: s3Mode === "import" ? selectedS3Id : "",
+      };
+
+      const resp =
+        s3Mode === "export"
+          ? await client.exportToS3(req)
+          : await client.importFromS3(req);
+
+      if (resp.success) {
+        alert(
+          `${s3Mode === "export" ? "Export" : "Import"} successful: ${resp.message}`,
+        );
+        setOpenS3Dialog(false);
+        if (s3Mode === "import") {
+          fetchData();
+        }
+      } else {
+        alert(`Failed: ${resp.message}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred during S3 operation");
+    } finally {
+      setProcessingS3(false);
     }
   };
 
@@ -394,6 +467,30 @@ const Dashboard = () => {
                     onChange={handleImportData}
                   />
                 </Button>
+                {config.s3Enabled && (
+                  <>
+                    <Button
+                      variant="outlined"
+                      color="info"
+                      onClick={() => {
+                        setS3Mode("export");
+                        setOpenS3Dialog(true);
+                      }}
+                    >
+                      Export to S3
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="info"
+                      onClick={() => {
+                        setS3Mode("import");
+                        setOpenS3Dialog(true);
+                      }}
+                    >
+                      Import from S3
+                    </Button>
+                  </>
+                )}
               </Box>
             </CardContent>
           </Card>
@@ -480,12 +577,111 @@ const Dashboard = () => {
               rows={3}
               helperText="Metadata for scenario (JSON string, etc.)"
             />
+            {config.s3Enabled && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={autoExportS3}
+                    onChange={(e) => setAutoExportS3(e.target.checked)}
+                  />
+                }
+                label="Auto export to S3 after test"
+              />
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
           <Button onClick={handleStartTest} variant="contained" color="primary">
             Start
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={openS3Dialog} onClose={() => setOpenS3Dialog(false)}>
+        <DialogTitle>
+          S3 {s3Mode === "export" ? "Export" : "Import"}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+            <TextField
+              label="S3 Bucket"
+              value={s3Bucket}
+              onChange={(e) => setS3Bucket(e.target.value)}
+              fullWidth
+              placeholder="Leave empty for default"
+            />
+            <TextField
+              label="S3 Region"
+              value={s3Region}
+              onChange={(e) => setS3Region(e.target.value)}
+              fullWidth
+              placeholder="Leave empty for default"
+            />
+            <TextField
+              label="S3 Prefix"
+              value={s3Prefix}
+              onChange={(e) => setS3Prefix(e.target.value)}
+              fullWidth
+              placeholder="Leave empty for default"
+            />
+
+            {s3Mode === "import" && (
+              <>
+                <Box
+                  sx={{ display: "flex", gap: 1, alignItems: "center", mt: 1 }}
+                >
+                  <Button
+                    variant="outlined"
+                    onClick={loadS3TestRuns}
+                    disabled={loadingS3Ids}
+                    size="small"
+                  >
+                    {loadingS3Ids ? (
+                      <CircularProgress size={20} />
+                    ) : (
+                      "Load Test Runs from S3"
+                    )}
+                  </Button>
+                </Box>
+
+                <FormControl fullWidth>
+                  <InputLabel id="s3-id-label">Select Test Run ID</InputLabel>
+                  <Select
+                    labelId="s3-id-label"
+                    value={selectedS3Id}
+                    label="Select Test Run ID"
+                    onChange={(e) => setSelectedS3Id(e.target.value)}
+                  >
+                    <MenuItem value="">
+                      <em>All (Import everything in prefix)</em>
+                    </MenuItem>
+                    {s3TestRunIds.map((id) => (
+                      <MenuItem key={id} value={id}>
+                        {id}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenS3Dialog(false)}>Cancel</Button>
+          <Button
+            onClick={handleS3Action}
+            variant="contained"
+            color="primary"
+            disabled={processingS3}
+          >
+            {processingS3 ? (
+              <CircularProgress size={24} />
+            ) : s3Mode === "export" ? (
+              "Export"
+            ) : (
+              "Import"
+            )}
           </Button>
         </DialogActions>
       </Dialog>

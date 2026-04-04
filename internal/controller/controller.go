@@ -49,16 +49,18 @@ func NewController(logger *slog.Logger, cfg *config.Config) (*Controller, error)
 		logger = slog.Default()
 	}
 	c := &Controller{
-		workers:         atomicmap.New[string, *Worker](),
-		storages:        atomicmap.New[string, dao.MetricsDAO](),
-		testRuns:        atomicmap.New[string, *TestRun](),
-		orchestrator:    orchestrator.NewOrchestrator(logger, cfg),
-		logger:          logger,
-		cfg:             cfg,
-		dataDir:         cfg.DataDir,
-		defaultS3Bucket: cfg.S3.Bucket,
-		defaultS3Region: cfg.S3.Region,
-		defaultS3Prefix: cfg.S3.Prefix,
+		workers:      atomicmap.New[string, *Worker](),
+		storages:     atomicmap.New[string, dao.MetricsDAO](),
+		testRuns:     atomicmap.New[string, *TestRun](),
+		orchestrator: orchestrator.NewOrchestrator(logger, cfg),
+		logger:       logger,
+		cfg:          cfg,
+		dataDir:      cfg.DataDir,
+	}
+	if cfg.S3 != nil {
+		c.defaultS3Bucket = cfg.S3.Bucket
+		c.defaultS3Region = cfg.S3.Region
+		c.defaultS3Prefix = cfg.S3.Prefix
 	}
 
 	if err := c.loadTestRuns(); err != nil {
@@ -336,6 +338,7 @@ func (c *Controller) RunTest(
 		MinLatencyMs:       0,
 		MaxLatencyMs:       0,
 		PathMetrics:        NewPathMetricsMap(),
+		AutoExportS3:       testConfig.GetAutoExportS3(),
 	})
 
 	if err := c.saveTestRuns(); err != nil {
@@ -946,6 +949,20 @@ func (c *Controller) sendMetrics(
 								if err := c.saveTestRuns(); err != nil {
 									c.logger.Error("Failed to save test runs on finish", "error", err)
 								}
+
+								// 自動エクスポートが有効な場合
+								if tr.AutoExportS3 {
+									go func(id string) {
+										_, err := c.ExportToS3(context.Background(), connect.NewRequest(&swarunv1.ExportToS3Request{
+											TestRunId: id,
+										}))
+										if err != nil {
+											c.logger.Error("Failed to auto-export to S3", "test_run_id", id, "error", err)
+										} else {
+											c.logger.Info("Successfully auto-exported to S3", "test_run_id", id)
+										}
+									}(targetID)
+								}
 							}
 						}(testRunID)
 					}
@@ -1288,4 +1305,8 @@ func (c *Controller) QueryMetrics(ctx context.Context, req *connect.Request[swar
 	}
 
 	return connect.NewResponse(&swarunv1.QueryMetricsResponse{Rows: respRows, ColumnNames: cols}), nil
+}
+
+func (c *Controller) IsS3Enabled() bool {
+	return c.defaultS3Bucket != ""
 }

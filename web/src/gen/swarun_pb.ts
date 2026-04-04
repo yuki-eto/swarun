@@ -229,6 +229,92 @@ export class ListTestRunsResponse extends Message<ListTestRunsResponse> {
 }
 
 /**
+ * @generated from message swarun.v1.ListS3TestRunsRequest
+ */
+export class ListS3TestRunsRequest extends Message<ListS3TestRunsRequest> {
+  /**
+   * @generated from field: string s3_bucket = 1;
+   */
+  s3Bucket = "";
+
+  /**
+   * @generated from field: string s3_prefix = 2;
+   */
+  s3Prefix = "";
+
+  /**
+   * @generated from field: string s3_region = 3;
+   */
+  s3Region = "";
+
+  constructor(data?: PartialMessage<ListS3TestRunsRequest>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "swarun.v1.ListS3TestRunsRequest";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "s3_bucket", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "s3_prefix", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "s3_region", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListS3TestRunsRequest {
+    return new ListS3TestRunsRequest().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListS3TestRunsRequest {
+    return new ListS3TestRunsRequest().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListS3TestRunsRequest {
+    return new ListS3TestRunsRequest().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListS3TestRunsRequest | PlainMessage<ListS3TestRunsRequest> | undefined, b: ListS3TestRunsRequest | PlainMessage<ListS3TestRunsRequest> | undefined): boolean {
+    return proto3.util.equals(ListS3TestRunsRequest, a, b);
+  }
+}
+
+/**
+ * @generated from message swarun.v1.ListS3TestRunsResponse
+ */
+export class ListS3TestRunsResponse extends Message<ListS3TestRunsResponse> {
+  /**
+   * @generated from field: repeated string test_run_ids = 1;
+   */
+  testRunIds: string[] = [];
+
+  constructor(data?: PartialMessage<ListS3TestRunsResponse>) {
+    super();
+    proto3.util.initPartial(data, this);
+  }
+
+  static readonly runtime: typeof proto3 = proto3;
+  static readonly typeName = "swarun.v1.ListS3TestRunsResponse";
+  static readonly fields: FieldList = proto3.util.newFieldList(() => [
+    { no: 1, name: "test_run_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ]);
+
+  static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): ListS3TestRunsResponse {
+    return new ListS3TestRunsResponse().fromBinary(bytes, options);
+  }
+
+  static fromJson(jsonValue: JsonValue, options?: Partial<JsonReadOptions>): ListS3TestRunsResponse {
+    return new ListS3TestRunsResponse().fromJson(jsonValue, options);
+  }
+
+  static fromJsonString(jsonString: string, options?: Partial<JsonReadOptions>): ListS3TestRunsResponse {
+    return new ListS3TestRunsResponse().fromJsonString(jsonString, options);
+  }
+
+  static equals(a: ListS3TestRunsResponse | PlainMessage<ListS3TestRunsResponse> | undefined, b: ListS3TestRunsResponse | PlainMessage<ListS3TestRunsResponse> | undefined): boolean {
+    return proto3.util.equals(ListS3TestRunsResponse, a, b);
+  }
+}
+
+/**
  * @generated from message swarun.v1.TestRunSummary
  */
 export class TestRunSummary extends Message<TestRunSummary> {
@@ -1851,6 +1937,11 @@ export class StartTestRequest extends Message<StartTestRequest> {
    */
   metadata = "";
 
+  /**
+   * @generated from field: bool auto_export_s3 = 9;
+   */
+  autoExportS3 = false;
+
   constructor(data?: PartialMessage<StartTestRequest>) {
     super();
     proto3.util.initPartial(data, this);
@@ -1867,6 +1958,7 @@ export class StartTestRequest extends Message<StartTestRequest> {
     { no: 6, name: "ramp_up_duration", kind: "message", T: Duration },
     { no: 7, name: "stages", kind: "message", T: RampingStage, repeated: true },
     { no: 8, name: "metadata", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 9, name: "auto_export_s3", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
   ]);
 
   static fromBinary(bytes: Uint8Array, options?: Partial<BinaryReadOptions>): StartTestRequest {

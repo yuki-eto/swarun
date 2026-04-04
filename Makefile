@@ -16,7 +16,7 @@ build-web: gen-web-proto
 build-go:
 	mkdir -p tmp
 	CGO_ENABLED=1 go build -o tmp/swarun ./cmd/swarun/main.go
-	CGO_ENABLED=1 go build -o tmp/swarun-condor ./scenarios/condor/main.go
+	CGO_ENABLED=1 go build -o tmp/swarun-example ./examples/simple-get/main.go
 
 test-go:
 	go test ./...
