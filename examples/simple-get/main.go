@@ -81,7 +81,7 @@ func main() {
 	logger := logging.Setup(cfg.LogLevel)
 
 	// シナリオの定義
-	sc := swarun.ScenarioFunc(func(ctx context.Context, metadata string) error {
+	sc := swarun.ScenarioFunc(func(ctx context.Context, metadata string, n uint64) error {
 		// HTTP GET リクエストの計測 (複数パスへのリクエスト)
 		urls := []string{
 			"https://httpbin.org/get",

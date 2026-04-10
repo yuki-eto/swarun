@@ -23,8 +23,6 @@ type TestRun struct {
 	MinLatencyMs        float64         `json:"min_latency_ms"`
 	FirstRequestTime    time.Time       `json:"first_request_time"`
 	LastRequestTime     time.Time       `json:"last_request_time"`
-	Latencies           []float64       `json:"-"`
-	LatenciesMu         sync.RWMutex    `json:"-"`
 	PathMetrics         *PathMetricsMap `json:"path_metrics"`
 	AutoExportS3        bool            `json:"auto_export_s3"`
 }
@@ -38,7 +36,6 @@ type PathStats struct {
 	Method       string        `json:"method"`
 	Success      int64         `json:"success"`
 	Failure      int64         `json:"failure"`
-	Latencies    []float64     `json:"-"`
 	TotalLatency time.Duration `json:"total_latency"`
 	MinLatencyMs float64       `json:"min_latency_ms"`
 	MaxLatencyMs float64       `json:"max_latency_ms"`
@@ -73,7 +70,6 @@ func (m *PathMetricsMap) Add(path, method, metric string, val float64) {
 	case "failure":
 		stats.Failure += int64(val)
 	case "latency_ms":
-		stats.Latencies = append(stats.Latencies, val)
 		stats.TotalLatency += time.Duration(val * float64(time.Millisecond))
 		if stats.MaxLatencyMs < val {
 			stats.MaxLatencyMs = val

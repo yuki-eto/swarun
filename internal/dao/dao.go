@@ -25,6 +25,8 @@ type PathStats struct {
 	AvgLatencyMs float64
 	MaxLatencyMs float64
 	MinLatencyMs float64
+	P90LatencyMs float64
+	P95LatencyMs float64
 }
 
 // MetricsDAO はメトリクスの保存と読み取りを担当するインターフェースです。

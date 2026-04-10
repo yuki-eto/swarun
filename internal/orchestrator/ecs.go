@@ -35,7 +35,7 @@ func (o *Orchestrator) provisionECS(ctx context.Context, mode *swarunv1.ECSMode,
 				AwsvpcConfiguration: &types.AwsVpcConfiguration{
 					Subnets:        subnets,
 					SecurityGroups: securityGroups,
-					AssignPublicIp: types.AssignPublicIpDisabled,
+					AssignPublicIp: types.AssignPublicIpEnabled,
 				},
 			},
 			EnableExecuteCommand: true,

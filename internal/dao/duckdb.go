@@ -252,7 +252,9 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 			AVG(value) as avg,
 			MAX(value) as max,
 			MIN(value) as min,
-			COUNT(value) as count
+			COUNT(value) as count,
+			PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY value) as p90,
+			PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY value) as p95
 		FROM metrics
 		WHERE timestamp >= ? AND timestamp <= ?
 	`
@@ -288,9 +290,9 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	overallStats := make(map[string]float64)
 	for overallRows.Next() {
 		var metric string
-		var total, avg, max, min float64
+		var total, avg, max, min, p90, p95 float64
 		var count int64
-		if err := overallRows.Scan(&metric, &total, &avg, &max, &min, &count); err != nil {
+		if err := overallRows.Scan(&metric, &total, &avg, &max, &min, &count, &p90, &p95); err != nil {
 			return nil, nil, err
 		}
 		switch metric {
@@ -303,6 +305,8 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 			overallStats["max_latency"] = max
 			overallStats["min_latency"] = min
 			overallStats["latency_count"] = float64(count)
+			overallStats["p90_latency"] = p90
+			overallStats["p95_latency"] = p95
 		}
 	}
 
@@ -319,7 +323,9 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 			SUM(value) as total,
 			AVG(value) as avg,
 			MAX(value) as max,
-			MIN(value) as min
+			MIN(value) as min,
+			PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY value) as p90,
+			PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY value) as p95
 		FROM metrics
 		WHERE timestamp >= ? AND timestamp <= ?
 	`
@@ -355,8 +361,8 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 	pathMetrics := make(map[string]PathStats)
 	for pathRows.Next() {
 		var path, method, metric string
-		var total, avg, max, min float64
-		if err := pathRows.Scan(&path, &method, &metric, &total, &avg, &max, &min); err != nil {
+		var total, avg, max, min, p90, p95 float64
+		if err := pathRows.Scan(&path, &method, &metric, &total, &avg, &max, &min, &p90, &p95); err != nil {
 			return nil, nil, err
 		}
 
@@ -372,6 +378,8 @@ func (d *duckDBDAO) SelectStats(ctx context.Context, labels map[string]string, s
 			stats.AvgLatencyMs = avg
 			stats.MaxLatencyMs = max
 			stats.MinLatencyMs = min
+			stats.P90LatencyMs = p90
+			stats.P95LatencyMs = p95
 		}
 		pathMetrics[path] = stats
 	}

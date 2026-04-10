@@ -16,7 +16,7 @@ type mockScenario struct {
 	count atomic.Int64
 }
 
-func (s *mockScenario) Run(ctx context.Context) error {
+func (s *mockScenario) Run(ctx context.Context, metadata string, n uint64) error {
 	s.count.Add(1)
 	return nil
 }

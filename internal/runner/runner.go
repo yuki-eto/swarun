@@ -181,8 +181,9 @@ func (r *Runner) worker(ctx context.Context) {
 	}
 
 	for {
+		currentN := uint64(r.totalRequests.Add(1))
 		if totalLimit > 0 {
-			if r.totalRequests.Add(1) > totalLimit {
+			if int64(currentN) > totalLimit {
 				return
 			}
 		}
@@ -195,7 +196,7 @@ func (r *Runner) worker(ctx context.Context) {
 			// 必要なら Config 経由で渡すか、pkg/swarun/swarun.go で初期化する
 			metadata := r.req.GetMetadata()
 			start := time.Now()
-			err := r.scenario.Run(ctx, metadata)
+			err := r.scenario.Run(ctx, metadata, currentN)
 			latency := time.Since(start)
 
 			// Check if the error is due to context cancellation/timeout

@@ -12,6 +12,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Typography,
 } from "@mui/material";
 import {
@@ -55,6 +56,14 @@ const TestRunDetail = () => {
   const [stopping, setStopping] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingS3, setExportingS3] = useState(false);
+  const [orderBy, setOrderBy] = useState<string>("path");
+  const [order, setOrder] = useState<"asc" | "desc">("asc");
+
+  const handleRequestSort = (property: string) => {
+    const isAsc = orderBy === property && order === "asc";
+    setOrder(isAsc ? "desc" : "asc");
+    setOrderBy(property);
+  };
 
   const fetchStatus = useCallback(async () => {
     if (!id) return null;
@@ -579,21 +588,117 @@ const TestRunDetail = () => {
               <Table stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Method</TableCell>
-                    <TableCell sx={{ minWidth: "300px" }}>Path</TableCell>
-                    <TableCell align="right">Success</TableCell>
-                    <TableCell align="right">Failure</TableCell>
-                    <TableCell align="right">RPS</TableCell>
-                    <TableCell align="right">Avg (ms)</TableCell>
-                    <TableCell align="right">Min (ms)</TableCell>
-                    <TableCell align="right">Max (ms)</TableCell>
-                    <TableCell align="right">P90 (ms)</TableCell>
-                    <TableCell align="right">P95 (ms)</TableCell>
+                    <TableCell>
+                      <TableSortLabel
+                        active={orderBy === "method"}
+                        direction={orderBy === "method" ? order : "asc"}
+                        onClick={() => handleRequestSort("method")}
+                      >
+                        Method
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sx={{ minWidth: "300px" }}>
+                      <TableSortLabel
+                        active={orderBy === "path"}
+                        direction={orderBy === "path" ? order : "asc"}
+                        onClick={() => handleRequestSort("path")}
+                      >
+                        Path
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === "totalSuccess"}
+                        direction={orderBy === "totalSuccess" ? order : "asc"}
+                        onClick={() => handleRequestSort("totalSuccess")}
+                      >
+                        Success
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === "totalFailure"}
+                        direction={orderBy === "totalFailure" ? order : "asc"}
+                        onClick={() => handleRequestSort("totalFailure")}
+                      >
+                        Failure
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === "rps"}
+                        direction={orderBy === "rps" ? order : "asc"}
+                        onClick={() => handleRequestSort("rps")}
+                      >
+                        RPS
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === "avgLatencyMs"}
+                        direction={orderBy === "avgLatencyMs" ? order : "asc"}
+                        onClick={() => handleRequestSort("avgLatencyMs")}
+                      >
+                        Avg (ms)
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === "minLatencyMs"}
+                        direction={orderBy === "minLatencyMs" ? order : "asc"}
+                        onClick={() => handleRequestSort("minLatencyMs")}
+                      >
+                        Min (ms)
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === "maxLatencyMs"}
+                        direction={orderBy === "maxLatencyMs" ? order : "asc"}
+                        onClick={() => handleRequestSort("maxLatencyMs")}
+                      >
+                        Max (ms)
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === "p90LatencyMs"}
+                        direction={orderBy === "p90LatencyMs" ? order : "asc"}
+                        onClick={() => handleRequestSort("p90LatencyMs")}
+                      >
+                        P90 (ms)
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell align="right">
+                      <TableSortLabel
+                        active={orderBy === "p95LatencyMs"}
+                        direction={orderBy === "p95LatencyMs" ? order : "asc"}
+                        onClick={() => handleRequestSort("p95LatencyMs")}
+                      >
+                        P95 (ms)
+                      </TableSortLabel>
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {Object.entries(status.pathMetrics)
                     .filter(([path]) => path !== "scenario_iteration")
+                    .sort((a, b) => {
+                      const aValue =
+                        orderBy === "path"
+                          ? a[0]
+                          : (a[1] as any)[orderBy];
+                      const bValue =
+                        orderBy === "path"
+                          ? b[0]
+                          : (b[1] as any)[orderBy];
+
+                      if (order === "asc") {
+                        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+                      } else {
+                        return bValue < aValue ? -1 : bValue > aValue ? 1 : 0;
+                      }
+                    })
                     .map(([path, metrics]) => (
                       <TableRow key={path}>
                         <TableCell>{metrics.method}</TableCell>

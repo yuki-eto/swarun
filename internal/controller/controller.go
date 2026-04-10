@@ -175,17 +175,6 @@ func (c *Controller) restoreStatsFromStorage(testRunID string, tr *TestRun) {
 			}
 		}
 	}
-
-	// パーセンタイル計算のために生データが必要な場合は、ここでも復元する
-	// ただし、非常に大量のデータになる可能性があるため注意
-	latencyRows, _ := storage.SelectRows(ctx, "latency_ms", nil, time.Time{}, time.Now(), "", 0)
-	if len(latencyRows) > 0 {
-		tr.LatenciesMu.Lock()
-		for _, row := range latencyRows {
-			tr.Latencies = append(tr.Latencies, row.Value)
-		}
-		tr.LatenciesMu.Unlock()
-	}
 }
 
 func (c *Controller) saveTestRuns() error {
@@ -374,118 +363,63 @@ func (c *Controller) GetTestStatus(
 		duration = tr.EndTime.Sub(tr.StartTime)
 	}
 
-	// テストが終了している場合はストレージから再集計（DuckDB のみ対応）
-	if !tr.IsRunning {
-		storage, err := c.getStorage(testRunID)
+	// テストが終了している、またはパーセンタイル計算のためにストレージから再集計
+	// 実行中でも DuckDB なら十分高速に計算可能
+	storage, err := c.getStorage(testRunID)
+	if err == nil {
+		overallStats, pathStats, err := storage.SelectStats(ctx, nil, tr.StartTime, time.Now())
 		if err == nil {
-			_, pathStats, err := storage.SelectStats(ctx, nil, tr.StartTime, tr.EndTime)
-			if err == nil {
-				tr.TotalSuccess = 0
-				tr.TotalFailure = 0
-				tr.TotalIterations = 0
-				var totalLatencyMs float64
-				var latencyCount int64
-				var allLatencies []float64
-
-				for path, stats := range pathStats {
-					pm := &swarunv1.PathMetrics{
-						Method:       stats.Method,
-						TotalSuccess: int64(stats.Success),
-						TotalFailure: int64(stats.Failure),
-						AvgLatencyMs: stats.AvgLatencyMs,
-						MaxLatencyMs: stats.MaxLatencyMs,
-						MinLatencyMs: stats.MinLatencyMs,
-					}
-					if duration > 0 {
-						pm.Rps = float64(pm.TotalSuccess+pm.TotalFailure) / duration.Seconds()
-					}
-
-					// DuckDB からパスごとの平均データも取れるように
-					latencyRows, _ := storage.SelectRows(ctx, "latency_ms", map[string]string{"path": path}, tr.StartTime, tr.EndTime, "", 0)
-					if len(latencyRows) > 0 {
-						lats := make([]float64, 0, len(latencyRows))
-						for _, r := range latencyRows {
-							lats = append(lats, r.Value)
-						}
-						slices.SortFunc(lats, cmp.Compare[float64])
-						idx90 := int(float64(len(lats))*0.9+0.99) - 1
-						if idx90 < 0 {
-							idx90 = 0
-						} else if idx90 >= len(lats) {
-							idx90 = len(lats) - 1
-						}
-						pm.P90LatencyMs = lats[idx90]
-
-						idx95 := int(float64(len(lats))*0.95+0.99) - 1
-						if idx95 < 0 {
-							idx95 = 0
-						} else if idx95 >= len(lats) {
-							idx95 = len(lats) - 1
-						}
-						pm.P95LatencyMs = lats[idx95]
-						if path != "scenario_iteration" {
-							allLatencies = append(allLatencies, lats...)
-						}
-					}
-					pathMetrics[path] = pm
-
-					if path == "scenario_iteration" {
-						tr.TotalIterations = pm.TotalSuccess
-					} else {
-						tr.TotalSuccess += pm.TotalSuccess
-						tr.TotalFailure += pm.TotalFailure
-						totalLatencyMs += stats.AvgLatencyMs * float64(pm.TotalSuccess+pm.TotalFailure)
-						latencyCount += (pm.TotalSuccess + pm.TotalFailure)
-						if tr.MaxLatencyMs < pm.MaxLatencyMs {
-							tr.MaxLatencyMs = pm.MaxLatencyMs
-						}
-						if tr.MinLatencyMs == 0 || tr.MinLatencyMs > pm.MinLatencyMs {
-							tr.MinLatencyMs = pm.MinLatencyMs
-						}
-					}
-
-					// インメモリのキャッシュも更新
-					if tr.PathMetrics != nil {
-						tr.PathMetrics.mu.Lock()
-						if s, ok := tr.PathMetrics.Metrics[path]; ok {
-							s.Success = pm.TotalSuccess
-							s.Failure = pm.TotalFailure
-							s.MinLatencyMs = pm.MinLatencyMs
-							s.MaxLatencyMs = pm.MaxLatencyMs
-							s.P90LatencyMs = pm.P90LatencyMs
-							s.P95LatencyMs = pm.P95LatencyMs
-						}
-						tr.PathMetrics.mu.Unlock()
-					}
-				}
-				if latencyCount > 0 {
-					avgLatency = totalLatencyMs / float64(latencyCount)
-				}
-				if len(allLatencies) > 0 {
-					slices.SortFunc(allLatencies, cmp.Compare[float64])
-					idx90 := int(float64(len(allLatencies))*0.9+0.99) - 1
-					if idx90 < 0 {
-						idx90 = 0
-					} else if idx90 >= len(allLatencies) {
-						idx90 = len(allLatencies) - 1
-					}
-					p90 = allLatencies[idx90]
-
-					idx95 := int(float64(len(allLatencies))*0.95+0.99) - 1
-					if idx95 < 0 {
-						idx95 = 0
-					} else if idx95 >= len(allLatencies) {
-						idx95 = len(allLatencies) - 1
-					}
-					p95 = allLatencies[idx95]
-				}
+			// 全体の統計
+			if lat, ok := overallStats["p90_latency"]; ok {
+				p90 = lat
 			}
-		}
-	} else {
-		// 実行中の場合はインメモリの統計を使用
-		if tr.TotalSuccess > 0 || tr.TotalFailure > 0 {
-			if tr.LatencyCount > 0 {
-				avgLatency = float64(tr.TotalLatency.Milliseconds()) / float64(tr.LatencyCount)
+			if lat, ok := overallStats["p95_latency"]; ok {
+				p95 = lat
+			}
+			if lat, ok := overallStats["avg_latency"]; ok {
+				avgLatency = lat
+			}
+
+			// パスごとの統計
+			for path, stats := range pathStats {
+				pm := &swarunv1.PathMetrics{
+					Method:       stats.Method,
+					TotalSuccess: int64(stats.Success),
+					TotalFailure: int64(stats.Failure),
+					AvgLatencyMs: stats.AvgLatencyMs,
+					MaxLatencyMs: stats.MaxLatencyMs,
+					MinLatencyMs: stats.MinLatencyMs,
+					P90LatencyMs: stats.P90LatencyMs,
+					P95LatencyMs: stats.P95LatencyMs,
+				}
+				if duration > 0 {
+					pm.Rps = float64(pm.TotalSuccess+pm.TotalFailure) / duration.Seconds()
+				}
+				pathMetrics[path] = pm
+
+				// インメモリのキャッシュも可能な限り更新
+				if tr.PathMetrics != nil {
+					tr.PathMetrics.mu.Lock()
+					if s, ok := tr.PathMetrics.Metrics[path]; ok {
+						s.Success = pm.TotalSuccess
+						s.Failure = pm.TotalFailure
+						s.MinLatencyMs = pm.MinLatencyMs
+						s.MaxLatencyMs = pm.MaxLatencyMs
+						s.P90LatencyMs = pm.P90LatencyMs
+						s.P95LatencyMs = pm.P95LatencyMs
+					} else {
+						tr.PathMetrics.Metrics[path] = &PathStats{
+							Method:       pm.Method,
+							Success:      pm.TotalSuccess,
+							Failure:      pm.TotalFailure,
+							MinLatencyMs: pm.MinLatencyMs,
+							MaxLatencyMs: pm.MaxLatencyMs,
+							P90LatencyMs: pm.P90LatencyMs,
+							P95LatencyMs: pm.P95LatencyMs,
+						}
+					}
+					tr.PathMetrics.mu.Unlock()
+				}
 			}
 		}
 	}
@@ -510,34 +444,11 @@ func (c *Controller) GetTestStatus(
 		actualDurationSec = 1
 	}
 
-	rps = float64(tr.TotalSuccess+tr.TotalFailure) / actualDurationSec
-
-	// パーセンタイル計算 (これだけは生データが必要)
-	tr.LatenciesMu.RLock()
-	if len(tr.Latencies) > 0 {
-		lats := slices.Clone(tr.Latencies)
-		tr.LatenciesMu.RUnlock()
-
-		slices.SortFunc(lats, cmp.Compare[float64])
-		// 最近傍法 (Nearest Rank) によるインデックス計算
-		// index = ceil(p * N) - 1
-		idx90 := int(float64(len(lats))*0.9+0.99) - 1
-		if idx90 < 0 {
-			idx90 = 0
-		} else if idx90 >= len(lats) {
-			idx90 = len(lats) - 1
-		}
-		p90 = lats[idx90]
-
-		idx95 := int(float64(len(lats))*0.95+0.99) - 1
-		if idx95 < 0 {
-			idx95 = 0
-		} else if idx95 >= len(lats) {
-			idx95 = len(lats) - 1
-		}
-		p95 = lats[idx95]
+	// 成功/失敗数が 0 の場合は RPS 0
+	if tr.TotalSuccess+tr.TotalFailure == 0 {
+		rps = 0
 	} else {
-		tr.LatenciesMu.RUnlock()
+		rps = float64(tr.TotalSuccess+tr.TotalFailure) / actualDurationSec
 	}
 
 	// パスごとの統計を集計 (インメモリの結果とマージ、または上書き)
@@ -553,41 +464,7 @@ func (c *Controller) GetTestStatus(
 				TotalSuccess: stats.Success,
 				TotalFailure: stats.Failure,
 			}
-			if len(stats.Latencies) > 0 {
-				lats := slices.Clone(stats.Latencies)
-				slices.SortFunc(lats, cmp.Compare[float64])
-				sum := 0.0
-				for _, v := range lats {
-					sum += v
-				}
-				pm.AvgLatencyMs = sum / float64(len(lats))
-				pm.MinLatencyMs = lats[0]
-				pm.MaxLatencyMs = lats[len(lats)-1]
-
-				// p90, p95
-				idx90 := int(float64(len(lats))*0.9+0.99) - 1
-				if idx90 < 0 {
-					idx90 = 0
-				} else if idx90 >= len(lats) {
-					idx90 = len(lats) - 1
-				}
-				pm.P90LatencyMs = lats[idx90]
-
-				idx95 := int(float64(len(lats))*0.95+0.99) - 1
-				if idx95 < 0 {
-					idx95 = 0
-				} else if idx95 >= len(lats) {
-					idx95 = len(lats) - 1
-				}
-				pm.P95LatencyMs = lats[idx95]
-
-				// キャッシュを更新しておく
-				stats.MinLatencyMs = pm.MinLatencyMs
-				stats.MaxLatencyMs = pm.MaxLatencyMs
-				stats.P90LatencyMs = pm.P90LatencyMs
-				stats.P95LatencyMs = pm.P95LatencyMs
-			} else if stats.TotalLatency > 0 && (stats.Success+stats.Failure) > 0 {
-				// DuckDB からロードされたデータなど、Latencies スライスがない場合のフォールバック
+			if stats.TotalLatency > 0 && (stats.Success+stats.Failure) > 0 {
 				pm.AvgLatencyMs = float64(stats.TotalLatency.Milliseconds()) / float64(stats.Success+stats.Failure)
 				pm.MinLatencyMs = stats.MinLatencyMs
 				pm.MaxLatencyMs = stats.MaxLatencyMs
@@ -908,15 +785,12 @@ func (c *Controller) sendMetrics(
 						atomic.AddInt64((*int64)(&tr.TotalLatency), int64(val*float64(time.Millisecond)))
 						atomic.AddInt64(&tr.LatencyCount, 1)
 
-						tr.LatenciesMu.Lock()
-						tr.Latencies = append(tr.Latencies, val)
 						if tr.MaxLatencyMs < val {
 							tr.MaxLatencyMs = val
 						}
 						if tr.MinLatencyMs == 0 || tr.MinLatencyMs > val {
 							tr.MinLatencyMs = val
 						}
-						tr.LatenciesMu.Unlock()
 					}
 				}
 
@@ -961,7 +835,27 @@ func (c *Controller) sendMetrics(
 										} else {
 											c.logger.Info("Successfully auto-exported to S3", "test_run_id", id)
 										}
+
+										// S3 エクスポート後にストレージをクリーンアップ
+										// DuckDB インメモリモードで保持されているメモリを解放する
+										if s, ok := c.storages.Get(id); ok {
+											if err := s.Close(); err != nil {
+												c.logger.Error("Failed to close storage after S3 export", "test_run_id", id, "error", err)
+											}
+											c.storages.Delete(id)
+											c.logger.Info("Closed and deleted storage after S3 export", "test_run_id", id)
+										}
 									}(targetID)
+								} else {
+									// S3 エクスポートがない場合はここでストレージをクリーンアップ
+									// DuckDB インメモリモードで保持されているメモリを解放する
+									if s, ok := c.storages.Get(targetID); ok {
+										if err := s.Close(); err != nil {
+											c.logger.Error("Failed to close storage after test finish", "test_run_id", targetID, "error", err)
+										}
+										c.storages.Delete(targetID)
+										c.logger.Info("Closed and deleted storage after test finish", "test_run_id", targetID)
+									}
 								}
 							}
 						}(testRunID)

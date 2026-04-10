@@ -36,6 +36,11 @@ const reportTemplate = `
         table { width: 100%; border-collapse: collapse; min-width: 800px; }
         th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid rgba(224, 224, 224, 1); }
         th { color: rgba(0, 0, 0, 0.87); font-weight: 500; font-size: 0.875rem; background-color: #fff; position: sticky; top: 0; }
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background-color: rgba(0, 0, 0, 0.04); }
+        th.sortable::after { content: ' \21C5'; font-size: 0.8em; color: rgba(0, 0, 0, 0.3); }
+        th.sorted-asc::after { content: ' \2191'; color: rgba(0, 0, 0, 0.87); }
+        th.sorted-desc::after { content: ' \2193'; color: rgba(0, 0, 0, 0.87); }
         td { color: rgba(0, 0, 0, 0.87); font-size: 0.875rem; }
         tr:hover { background-color: rgba(0, 0, 0, 0.04); }
         .align-right { text-align: right; }
@@ -109,19 +114,19 @@ const reportTemplate = `
     {{if .Status.PathMetrics}}
     <div class="table-card">
         <h2>Path Metrics</h2>
-        <table>
+        <table id="pathMetricsTable">
             <thead>
                 <tr>
-                    <th>Method</th>
-                    <th>Path</th>
-                    <th class="align-right">Success</th>
-                    <th class="align-right">Failure</th>
-                    <th class="align-right">RPS</th>
-                    <th class="align-right">Avg (ms)</th>
-                    <th class="align-right">Min (ms)</th>
-                    <th class="align-right">Max (ms)</th>
-                    <th class="align-right">P90 (ms)</th>
-                    <th class="align-right">P95 (ms)</th>
+                    <th class="sortable" onclick="sortTable(0, 'string')">Method</th>
+                    <th class="sortable" onclick="sortTable(1, 'string')">Path</th>
+                    <th class="sortable align-right" onclick="sortTable(2, 'number')">Success</th>
+                    <th class="sortable align-right" onclick="sortTable(3, 'number')">Failure</th>
+                    <th class="sortable align-right" onclick="sortTable(4, 'number')">RPS</th>
+                    <th class="sortable align-right" onclick="sortTable(5, 'number')">Avg (ms)</th>
+                    <th class="sortable align-right" onclick="sortTable(6, 'number')">Min (ms)</th>
+                    <th class="sortable align-right" onclick="sortTable(7, 'number')">Max (ms)</th>
+                    <th class="sortable align-right" onclick="sortTable(8, 'number')">P90 (ms)</th>
+                    <th class="sortable align-right" onclick="sortTable(9, 'number')">P95 (ms)</th>
                 </tr>
             </thead>
             <tbody>
@@ -240,6 +245,63 @@ const reportTemplate = `
                 }
             }
         });
+
+        function sortTable(n, type) {
+            const table = document.getElementById("pathMetricsTable");
+            let rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+            switching = true;
+            dir = "asc";
+            
+            const headers = table.getElementsByTagName("TH");
+            for (i = 0; i < headers.length; i++) {
+                headers[i].classList.remove("sorted-asc", "sorted-desc");
+            }
+
+            while (switching) {
+                switching = false;
+                rows = table.rows;
+                for (i = 1; i < (rows.length - 1); i++) {
+                    shouldSwitch = false;
+                    x = rows[i].getElementsByTagName("TD")[n];
+                    y = rows[i + 1].getElementsByTagName("TD")[n];
+                    
+                    let xVal = x.innerHTML.toLowerCase();
+                    let yVal = y.innerHTML.toLowerCase();
+                    
+                    if (type === 'number') {
+                        xVal = parseFloat(xVal) || 0;
+                        yVal = parseFloat(yVal) || 0;
+                    }
+
+                    if (dir === "asc") {
+                        if (xVal > yVal) {
+                            shouldSwitch = true;
+                            break;
+                        }
+                    } else if (dir === "desc") {
+                        if (xVal < yVal) {
+                            shouldSwitch = true;
+                            break;
+                        }
+                    }
+                }
+                if (shouldSwitch) {
+                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+                    switching = true;
+                    switchcount++;
+                } else {
+                    if (switchcount === 0 && dir === "asc") {
+                        dir = "desc";
+                        switching = true;
+                    }
+                }
+            }
+            if (dir === "asc") {
+                headers[n].classList.add("sorted-asc");
+            } else {
+                headers[n].classList.add("sorted-desc");
+            }
+        }
     </script>
 </body>
 </html>

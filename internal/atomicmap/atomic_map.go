@@ -87,3 +87,10 @@ func (m *Map[K, V]) Set(key K, val V) {
 	defer m.mu.Unlock()
 	m.m[key] = val
 }
+
+// Delete は指定されたキーとその値をマップから削除します。
+func (m *Map[K, V]) Delete(key K) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.m, key)
+}

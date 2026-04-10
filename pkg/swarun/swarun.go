@@ -1,6 +1,7 @@
 package swarun
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"io"
@@ -36,8 +37,11 @@ var (
 	stream *connect.ClientStreamForClient[swarunv1.MetricBatch, swarunv1.SendMetricsResponse]
 	mu     sync.Mutex
 
-	// httpClient is the custom HTTP client with Keepalive settings.
-	httpClient *http.Client
+	// loadTestClient は負荷試験のリクエスト用のカスタム HTTP クライアントです。
+	loadTestClient *http.Client
+
+	// controllerClient はコントローラーとの通信用の HTTP クライアントです。
+	controllerClient *http.Client
 
 	metricQueue chan *swarunv1.MetricEntry
 	wg          sync.WaitGroup
@@ -66,6 +70,27 @@ func initEnv() {
 		metricQueue = make(chan *swarunv1.MetricEntry, queueSize)
 		done = make(chan struct{})
 
+		// 負荷試験用の Transport 設定
+		// MaxIdleConnsPerHost を増やして、同一ホストへの同時接続性能を向上させる
+		t := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			MaxIdleConns:          10000,
+			MaxIdleConnsPerHost:   2000, // Concurrency 設定より大きい値が望ましい
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			ForceAttemptHTTP2:     true,
+		}
+
+		loadTestClient = &http.Client{
+			Transport: t,
+			Timeout:   60 * time.Second,
+		}
+
 		if controllerAddr != "" {
 			// Configure HTTP/2 transport with Keepalive settings
 			transport := &http2.Transport{
@@ -78,12 +103,12 @@ func initEnv() {
 				WriteByteTimeout: 15 * time.Second,
 			}
 
-			httpClient = &http.Client{
+			controllerClient = &http.Client{
 				Transport: transport,
 			}
 
 			client = swarunv1connect.NewControllerServiceClient(
-				httpClient,
+				controllerClient,
 				controllerAddr,
 			)
 
@@ -193,10 +218,23 @@ func ReportFailure(label string) {
 }
 
 // SetTestRunID sets the current test run ID.
+// If the test run ID is different from the current one, the existing stream is closed and reset.
 func SetTestRunID(id string) {
 	testRunIDMu.Lock()
 	defer testRunIDMu.Unlock()
-	testRunID = id
+	if testRunID != id {
+		testRunID = id
+		// Reset stream for new test run
+		mu.Lock()
+		if stream != nil {
+			// Closing current stream (non-blocking attempt)
+			go func(s *connect.ClientStreamForClient[swarunv1.MetricBatch, swarunv1.SendMetricsResponse]) {
+				s.CloseAndReceive()
+			}(stream)
+			stream = nil
+		}
+		mu.Unlock()
+	}
 }
 
 // GetTestRunID returns the current test run ID.
@@ -402,7 +440,8 @@ func Do(req *http.Request) (*http.Response, error) {
 	}
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 
-	resp, err := http.DefaultClient.Do(req)
+	initEnv() // Ensure client is initialized
+	resp, err := loadTestClient.Do(req)
 	totalLatency := time.Since(start)
 
 	metrics := map[string]float64{
@@ -426,6 +465,21 @@ func Do(req *http.Request) (*http.Response, error) {
 	// HTTP ステータスコードが 400 以上なら失敗として記録
 	if resp.StatusCode >= 400 {
 		metrics["failure"] = 1
+
+		// レスポンス内容をログに出力
+		limitedReader := io.LimitReader(resp.Body, 1024)
+		bodyBytes, err := io.ReadAll(limitedReader)
+		if err == nil {
+			slog.Error("Request failed",
+				"status_code", resp.StatusCode,
+				"url", label,
+				"method", req.Method,
+				"response_body", string(bodyBytes),
+				"request_id", reqIDStr,
+			)
+		}
+		// Body を差し替えておかないと後続の処理で読めなくなる
+		resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	} else {
 		// 成功を記録
 		metrics["success"] = 1
